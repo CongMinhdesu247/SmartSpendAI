@@ -1,0 +1,10 @@
+{
+  "name": "smartspend-ui",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -c tailwind.config.cjs -i frontend/tailwind.input.css -o frontend/tailwind.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}

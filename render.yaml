@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: smartspend
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: SMARTSPEND_CLOUD
+        value: "1"
+      - key: SMARTSPEND_SESSION_SECRET
+        generateValue: true
+      - key: SMARTSPEND_PASSWORD_HASH
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

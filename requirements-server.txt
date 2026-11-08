@@ -1,0 +1,11 @@
+# Server runtime only: no desktop window or EXE packaging dependencies.
+fastapi==0.124.4
+starlette==0.50.0
+uvicorn[standard]==0.38.0
+sqlalchemy==2.1.8
+psycopg2-binary==2.9.13
+pydantic==2.12.5
+google-genai==3.0.0
+pwdlib[argon2]==0.3.0
+itsdangerous==2.2.0
+qrcode==8.2

@@ -1,0 +1,14 @@
+node_modules/
+__pycache__/
+*.pyc
+.playwright-cli/
+output/
+config.json
+smartspend_local.db
+*.before_finance_v1.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+!.env.cloud.example
+webview_profile/

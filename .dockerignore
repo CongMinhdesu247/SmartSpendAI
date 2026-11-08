@@ -1,0 +1,9 @@
+*
+!Dockerfile
+!requirements-server.txt
+!backend/
+!backend/**
+!frontend/
+!frontend/**
+**/__pycache__/
+**/*.pyc
