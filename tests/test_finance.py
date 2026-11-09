@@ -47,6 +47,21 @@ class FinanceTests(unittest.TestCase):
         payload.update(values)
         return payload
 
+    def test_daily_cashflow_includes_income_and_ignores_deleted_and_other_months(self):
+        for day, kind, amount in [('2026-11-01', 'expense', 70000), ('2026-11-02', 'income', 20000),
+                                  ('2026-11-03', 'expense', 60000), ('2026-11-04', 'income', 30000),
+                                  ('2026-10-31', 'expense', 999000)]:
+            self.post('/transactions', self.expense(spent_on=day, kind=kind, amount=amount))
+        deleted = self.post('/transactions', self.expense(spent_on='2026-11-01', amount=900000))
+        self.client.delete(f"/api/finance/transactions/{deleted['id']}")
+        data = self.client.get('/api/finance/overview?month=2026-11').json()
+        self.assertEqual((data['expense'], data['income']), (130000, 50000))
+        self.assertEqual(data['daily_cashflow'], [
+            {'date': '2026-11-01', 'expense': 70000, 'income': 0},
+            {'date': '2026-11-02', 'expense': 0, 'income': 20000},
+            {'date': '2026-11-03', 'expense': 60000, 'income': 0},
+            {'date': '2026-11-04', 'expense': 0, 'income': 30000}])
+
     def test_ledger_month_filter_edit_undo_and_large_money(self):
         payload = self.expense()
         row = self.post('/transactions', payload)
@@ -111,7 +126,7 @@ class FinanceTests(unittest.TestCase):
             db.add(plan); db.commit()
             return plan.id, plan.items[0].id
 
-    def test_completion_is_not_payment_copy_and_delete_preserve_ledger(self):
+    def test_legacy_completion_and_manual_payment_copy_delete_preserve_ledger(self):
         plan_id, item_id = self.make_plan()
         original = self.client.get(f'/api/plans/{plan_id}').json()
         self.assertTrue(original['items'][0]['is_completed'])
@@ -123,6 +138,7 @@ class FinanceTests(unittest.TestCase):
         copied = self.client.post(f'/api/plans/{plan_id}/copy').json()
         self.assertEqual(copied['actual_spent'], 0)
         self.assertFalse(copied['items'][0]['is_completed'])
+
         self.assertIsNone(copied['items'][0]['payment'])
         archive = self.client.delete(f'/api/plans/{plan_id}').json()
         kept = self.client.get(f"/api/finance/transactions/{transaction['id']}").json()
@@ -133,6 +149,98 @@ class FinanceTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/finance/overview?month=2026-11').json()['expense'], 85000)
         repeated = self.client.post(f"/api/plans/trash/{archive['undo_id']}/restore").json()
         self.assertEqual(repeated['id'], restored['id'])
+
+    def test_auto_payment_survives_archive_restore_and_reused_sqlite_item_id(self):
+        from backend.finance_models import Transaction
+        plan_id, item_id = self.make_plan()
+        self.assertEqual(self.client.patch(f'/api/items/{item_id}', json={'is_completed': True}).status_code, 200)
+        archived = self.client.delete(f'/api/plans/{plan_id}').json()
+        # Leave the old payment in the ledger, then create a new item. SQLite
+        # may reuse a deleted maximum ID; this must still be a distinct expense.
+        new_plan_id, new_item_id = self.make_plan()
+        response = self.client.patch(f'/api/items/{new_item_id}', json={'is_completed': True})
+        self.assertEqual(response.status_code, 200, response.text)
+        restored = self.client.post(f"/api/plans/trash/{archived['undo_id']}/restore").json()
+        self.assertEqual(restored['actual_spent'], 80000)
+        restored_item_id = restored['items'][0]['id']
+        cleared = self.client.patch(f'/api/items/{restored_item_id}', json={'is_completed': False})
+        self.assertEqual(cleared.status_code, 200, cleared.text)
+        self.assertEqual(cleared.json()['plan']['actual_spent'], 0)
+        self.assertEqual(self.client.get(f'/api/plans/{new_plan_id}').json()['actual_spent'], 80000)
+        with self.sessions() as db:
+            self.assertEqual(db.query(Transaction).count(), 2)
+            self.assertEqual(db.query(Transaction).filter(Transaction.deleted_at.is_(None)).count(), 1)
+
+    def test_completion_creates_expense_updates_totals_and_retries_without_duplicates(self):
+        from backend.finance_models import Transaction
+        plan_id, item_id = self.make_plan()
+        path = f'/api/items/{item_id}'
+        with patch('backend.finance_api.today', return_value=date(2026, 11, 9)):
+            for _ in range(2):
+                response = self.client.patch(path, json={'is_completed': True})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json()['plan']['actual_spent'], 80000)
+                self.assertEqual(response.json()['item']['payment']['amount'], 80000)
+            overview = self.client.get('/api/finance/overview?month=2026-11').json()
+            self.assertEqual(overview['expense'], 80000)
+            self.assertEqual(overview['daily'][0]['amount'], 80000)
+            self.assertEqual(sum(c['amount'] for c in overview['categories']), 80000)
+            changed = self.client.patch(path, json={'price': 95000}).json()
+            self.assertEqual(changed['plan']['actual_spent'], 95000)
+            self.assertEqual(self.client.patch(path, json={'is_completed': False}).json()['plan']['actual_spent'], 0)
+            self.assertEqual(self.client.get('/api/finance/overview?month=2026-11').json()['expense'], 0)
+            self.assertEqual(self.client.patch(path, json={'is_completed': True}).json()['plan']['actual_spent'], 95000)
+            payment_id = self.client.get(f'/api/plans/{plan_id}').json()['items'][0]['payment']['id']
+            edited = self.client.get(f'/api/finance/transactions/{payment_id}').json()
+            edited['amount'] = 91000
+            self.assertEqual(self.client.put(f'/api/finance/transactions/{payment_id}', json=edited).status_code, 200)
+            # A delayed retry of the original checkbox must not undo a real-price edit.
+            self.assertEqual(self.client.patch(path, json={'is_completed': True}).json()['plan']['actual_spent'], 91000)
+        with self.sessions() as db:
+            self.assertEqual(db.query(Transaction).count(), 1)
+        copied = self.client.post(f'/api/plans/{plan_id}/copy').json()
+        self.assertEqual(copied['actual_spent'], 0)
+        self.assertFalse(copied['items'][0]['is_completed'])
+
+    def test_zero_price_completion_and_failed_expense_are_atomic(self):
+        from backend.finance_models import Category, Transaction
+        _, item_id = self.make_plan()
+        response = self.client.patch(f'/api/items/{item_id}', json={'price': 0, 'is_completed': True})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()['item']['payment'])
+        with self.sessions() as db:
+            self.assertEqual(db.query(Transaction).count(), 0)
+            db.query(Category).update({'archived': True}); db.commit()
+        self.client.patch(f'/api/items/{item_id}', json={'is_completed': False})
+        response = self.client.patch(f'/api/items/{item_id}', json={'price': 10000, 'is_completed': True})
+        self.assertEqual(response.status_code, 409)
+        with self.sessions() as db:
+            item = db.get(models.PlanItem, item_id)
+            self.assertFalse(item.is_completed)
+            self.assertEqual(item.price, 0)
+            self.assertEqual(db.query(Transaction).count(), 0)
+
+    def test_plan_input_lengths_and_cursor_pagination(self):
+        from datetime import datetime, timezone
+        with patch('backend.api_server.generate_smart_plan') as generate:
+            for payload in ({'title': 'x' * 256}, {'region': 'x' * 121},
+                            {'region': '   '}, {'preferences': 'x' * 2001},
+                            {'days_or_people': 'x' * 121}):
+                self.assertEqual(self.client.post('/api/plans/generate', json=payload).status_code, 422)
+            generate.assert_not_called()
+        with self.sessions() as db:
+            for index in range(65):
+                db.add(models.Plan(title=f'Plan {index}', plan_type='meal' if index % 2 else 'hangout',
+                    total_budget=500000, region='HCM', created_at=datetime(2026, 11, 1, tzinfo=timezone.utc)))
+            db.commit()
+        first = self.client.get('/api/plans').json()
+        self.assertEqual(len(first), 30)
+        second = self.client.get(f"/api/plans?before_id={first[-1]['id']}").json()
+        third = self.client.get(f"/api/plans?before_id={second[-1]['id']}").json()
+        self.assertEqual(len(first + second + third), 65)
+        self.assertEqual(len({p['id'] for p in first + second + third}), 65)
+        self.assertTrue(all(p['plan_type'] == 'meal' for p in self.client.get('/api/plans?plan_type=meal').json()))
+        self.assertEqual(self.client.get('/api/plans?limit=101').status_code, 422)
 
     def test_ai_preferences_pantry_replacement_and_paid_guard(self):
         self.client.put('/api/finance/preferences', json={'tastes': 'Cá', 'avoid': 'Tôm', 'people': '2 người'})

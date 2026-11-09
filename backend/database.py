@@ -1,6 +1,8 @@
 import json
 import os
 import sys
+import logging
+import threading
 from contextlib import closing
 from pathlib import Path
 from typing import Any, Dict, Generator, Optional
@@ -10,6 +12,8 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from fastapi import Request, HTTPException
+from backend.tenancy import LedgerSession, OWNER_ID
 
 # Đường dẫn thư mục gốc của dự án (hỗ trợ cả khi chạy code trực tiếp lẫn khi đóng gói PyInstaller .exe)
 if getattr(sys, "frozen", False):
@@ -41,6 +45,12 @@ def enable_sqlite_foreign_keys(connection, _record):
 engine: Optional[Engine] = None
 SessionLocal: Optional[sessionmaker] = None
 current_db_mode: str = "sqlite"  # "postgresql" hoặc "sqlite"
+connection_lock = threading.RLock()
+logger = logging.getLogger(__name__)
+
+
+class DatabaseConnectionError(RuntimeError):
+    pass
 
 
 def is_cloud_mode() -> bool:
@@ -81,8 +91,10 @@ def save_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "database_url": str(cfg.get("database_url", "")).strip(),
         "cloud_url": str(cfg.get("cloud_url", "")).strip(),
     }
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+    temporary = CONFIG_FILE.with_suffix(".json.tmp")
+    with open(temporary, "w", encoding="utf-8") as f:
         json.dump(clean_cfg, f, indent=2, ensure_ascii=False)
+    temporary.replace(CONFIG_FILE)
     return clean_cfg
 
 
@@ -115,109 +127,98 @@ def normalize_database_url(raw_url: str) -> str:
     return url
 
 
-def init_db_connection(custom_url: Optional[str] = None) -> Dict[str, Any]:
+def init_db_connection(custom_url: Optional[str] = None, config_to_save=None) -> Dict[str, Any]:
     """
     Khởi tạo (hoặc khởi tạo lại) kết nối SQLAlchemy Engine & SessionLocal.
     - Nếu người dùng đã cấu hình PostgreSQL URI (Supabase): kết nối trực tiếp với pool_pre_ping=True.
-    - Nếu chưa nhập hoặc kết nối lỗi: tự động fallback về SQLite cục bộ để ứng dụng không bị crash.
+    - Chỉ dùng SQLite khi chưa cấu hình PostgreSQL. Kết nối lỗi giữ nguyên nguồn dữ liệu.
     """
     global engine, SessionLocal, current_db_mode
-
-    cfg = load_config()
-    raw_url = custom_url if custom_url is not None else cfg.get("database_url", "")
-    normalized_url = normalize_database_url(raw_url)
-    if is_cloud_mode() and not normalized_url.startswith(("postgresql://", "postgresql+")):
-        raise RuntimeError("Cloud cần DATABASE_URL PostgreSQL; không dùng SQLite tạm")
-
-    # Đóng engine cũ nếu đang tồn tại trước khi re-init
-    if engine is not None:
+    with connection_lock:
+        raw_url = custom_url if custom_url is not None else load_config().get("database_url", "")
+        normalized_url = normalize_database_url(raw_url)
+        postgres = normalized_url.startswith(("postgresql://", "postgresql+"))
+        if (normalized_url and not postgres) or (is_cloud_mode() and not postgres):
+            raise DatabaseConnectionError("Địa chỉ database phải là PostgreSQL. Để trống để chọn SQLite trên máy tính.")
+        candidate = None
         try:
-            engine.dispose()
-        except Exception:
-            pass
-
-    if normalized_url.startswith("postgresql://") or normalized_url.startswith("postgresql+"):
-        try:
-            test_engine = create_engine(
-                normalized_url,
-                pool_pre_ping=True,
-                pool_size=5,
-                max_overflow=10,
-                pool_recycle=300,
-                connect_args={"connect_timeout": 10},
-            )
-            # Kiểm tra kết nối thực tế tới Supabase PostgreSQL
-            with test_engine.connect() as conn:
-                pass
-
-            engine = test_engine
-            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-            current_db_mode = "postgresql"
-
-            # Import models và tạo bảng tự động trên Supabase nếu chưa có
-            from backend import models, finance_models  # noqa: F401
-            Base.metadata.create_all(bind=engine)
-
-            if is_cloud_mode():
-                with engine.begin() as conn:
-                    for table in ("plans", "plan_items"):
-                        conn.exec_driver_sql(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
-            return {
-                "status": "connected",
-                "mode": "postgresql",
-                "message": "Đã kết nối thành công tới Supabase PostgreSQL trên đám mây!",
-            }
+            if postgres:
+                candidate = create_engine(normalized_url, pool_pre_ping=True, pool_size=5,
+                    max_overflow=10, pool_recycle=300, connect_args={"connect_timeout": 10})
+                from backend.account_migration import require_ready
+                # Desktop must satisfy exactly the same schema/role contract.
+                require_ready(candidate)
+            else:
+                candidate = _create_sqlite_engine()
+            from backend.finance_api import initialize_finance
+            initialize_finance(candidate)
+            if config_to_save is not None:
+                save_config(config_to_save)
         except Exception as exc:
-            if is_cloud_mode():
-                raise RuntimeError("Không kết nối được PostgreSQL. Kiểm tra DATABASE_URL trên hosting.") from None
-            # Fallback an toàn về SQLite nếu chuỗi PostgreSQL bị sai mật khẩu hoặc mất mạng
-            _init_sqlite_fallback()
-            return {
-                "status": "fallback",
-                "mode": "sqlite",
-                "message": "Không thể kết nối PostgreSQL. Đang tạm dùng SQLite cục bộ.",
-            }
-    else:
-        _init_sqlite_fallback()
-        return {
-            "status": "local",
-            "mode": "sqlite",
-            "message": "Đang sử dụng cơ sở dữ liệu tạm SQLite cục bộ (chưa cấu hình Supabase PostgreSQL).",
-        }
+            if candidate is not None:
+                candidate.dispose()
+            logger.error("Database connection/setup failed (%s)", type(exc).__name__)
+            raise DatabaseConnectionError(
+                "Chưa kết nối được database hoặc chưa nâng cấp schema/quyền. "
+                "Kiểm tra kết nối và hướng dẫn migrate_private_ledgers.py. "
+                "Cấu hình và nguồn dữ liệu hiện tại được giữ nguyên."
+            ) from None
+        previous = engine
+        engine = candidate
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        current_db_mode = "postgresql" if postgres else "sqlite"
+        if previous is not None and previous is not candidate:
+            previous.dispose()
+        return {"status": "connected" if postgres else "local", "mode": current_db_mode,
+            "message": "Đã kết nối PostgreSQL." if postgres else "Đang lưu dữ liệu SQLite trên máy tính."}
 
 
 def _init_sqlite_fallback() -> None:
     """Hàm nội bộ khởi tạo SQLite fallback khi chưa có cấu hình Supabase."""
     global engine, SessionLocal, current_db_mode
 
-    engine = create_engine(
+    engine = _create_sqlite_engine()
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    current_db_mode = "sqlite"
+
+
+def _create_sqlite_engine() -> Engine:
+    local_engine = create_engine(
         DEFAULT_SQLITE_URL,
         connect_args={"check_same_thread": False},
         pool_pre_ping=True,
     )
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    current_db_mode = "sqlite"
 
     from backend import models, finance_models  # noqa: F401
     # Keep a consistent SQLite snapshot before the first additive finance upgrade.
     from sqlalchemy import inspect
-    local_path = Path(engine.url.database)
+    local_path = Path(local_engine.url.database)
     backup_path = local_path.with_name(local_path.stem + '.before_finance_v1.db')
-    existing_tables = inspect(engine).get_table_names()
+    existing_tables = inspect(local_engine).get_table_names()
     if 'plans' in existing_tables and 'spend_transactions' not in existing_tables and not backup_path.exists():
         import sqlite3
         with closing(sqlite3.connect(local_path)) as source, closing(sqlite3.connect(backup_path)) as target:
             source.backup(target)
-    Base.metadata.create_all(bind=engine)
+    from backend.sqlite_upgrade import upgrade_local
+    try:
+        upgrade_local(local_engine)
+        Base.metadata.create_all(bind=local_engine)
+        return local_engine
+    except Exception:
+        local_engine.dispose()
+        raise
 
 
-def get_db() -> Generator[Session, None, None]:
+def get_db(request: Request) -> Generator[Session, None, None]:
     """Dependency cung cấp phiên làm việc (Session) của Database cho FastAPI."""
     global SessionLocal
     if SessionLocal is None:
         init_db_connection()
 
-    db = SessionLocal()
+    user = getattr(request.state, "user", None)
+    if is_cloud_mode() and not user:
+        raise HTTPException(401, "Vui lòng đăng nhập")
+    db = LedgerSession(engine, user_id=user["id"] if user else OWNER_ID)
     try:
         yield db
     finally:

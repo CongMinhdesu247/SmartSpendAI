@@ -6,9 +6,13 @@ output/
 config.json
 smartspend_local.db
 *.before_finance_v1.db
+*.before_private_ledgers.db
 *.db-wal
 *.db-shm
 .env
 .env.*
 !.env.cloud.example
 webview_profile/
+build/
+dist/
+*.spec

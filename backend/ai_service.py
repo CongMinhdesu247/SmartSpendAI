@@ -1,4 +1,6 @@
 import json
+import os
+import logging
 from typing import Any, Dict, List, Literal, Optional
 
 from google import genai
@@ -6,6 +8,13 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from backend.database import load_config
+logger = logging.getLogger(__name__)
+
+
+def make_client(api_key):
+    # Milliseconds. One provider attempt per model; at most three models below.
+    return genai.Client(api_key=api_key, http_options=types.HttpOptions(
+        timeout=20000, retry_options=types.HttpRetryOptions(attempts=1)))
 
 # =====================================================================
 # BẢNG NEO GIÁ THỰC TẾ TẠI VIỆT NAM (VN_PRICE_ANCHOR)
@@ -60,6 +69,7 @@ class AIPlanItemSchema(BaseModel):
         )
     )
     time_or_day: str = Field(
+        max_length=120,
         description=(
             "Thời điểm hoặc phân nhóm. "
             "Với 'grocery': ghi nhóm nguyên liệu (VD: 'Đạm & Thịt cá', 'Rau củ & Trái cây', 'Tinh bột & Gia vị'). "
@@ -68,6 +78,7 @@ class AIPlanItemSchema(BaseModel):
         )
     )
     name: str = Field(
+        min_length=1, max_length=255,
         description=(
             "Tên thực phẩm kèm định lượng rõ ràng (VD: 'Thịt ba rọi heo (500g)') "
             "HOẶC tóm tắt món Sáng - Trưa - Tối của ngày đó "
@@ -75,6 +86,7 @@ class AIPlanItemSchema(BaseModel):
         )
     )
     details: str = Field(
+        max_length=5000,
         description=(
             "Chi tiết hữu ích: "
             "Với 'grocery': cách chọn mua tươi ngon, chia phần & bảo quản tủ lạnh cho những ngày nào. "
@@ -84,6 +96,7 @@ class AIPlanItemSchema(BaseModel):
     )
     price: int = Field(
         ge=0,
+        le=2000000000,
         description=(
             "Chi phí ước tính bằng VNĐ (số nguyên dương, làm tròn nghìn đồng). "
             "LƯU Ý QUAN TRỌNG: Với kế hoạch 'meal', toàn bộ tiền mua nguyên liệu đã tính ở các mục 'grocery', "
@@ -95,6 +108,7 @@ class AIPlanItemSchema(BaseModel):
 
 class AIPlanOutput(BaseModel):
     title: str = Field(
+        min_length=1, max_length=255,
         description="Tiêu đề kế hoạch ngắn gọn, hấp dẫn (VD: 'Thực đơn 7 ngày 500k đủ chất' hoặc 'Hẹn hò cuối tuần 300k tại Hà Nội')."
     )
     estimated_cost: int = Field(
@@ -105,6 +119,7 @@ class AIPlanOutput(BaseModel):
         description="Lời khuyên thực tế từ chuyên gia tài chính: mẹo đi chợ/sơ chế/bảo quản hoặc mẹo săn ưu đãi, phương án dự phòng khi thời tiết xấu."
     )
     items: List[AIPlanItemSchema] = Field(
+        min_length=1, max_length=200,
         description="Danh sách đầy đủ các hạng mục của kế hoạch."
     )
 
@@ -127,7 +142,7 @@ def _call_gemini_with_fallback(
     """
     Thử gọi lần lượt các model trong danh sách ưu tiên:
     ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash"].
-    Nếu gặp lỗi 404 (Not Found), tự động gọi client.models.list() để tìm model có chữ 'flash' khả dụng.
+    Chỉ thử model tiếp theo khi model trước trả lỗi 404. Không quét model tự do.
     """
     config = types.GenerateContentConfig(
         system_instruction=system_instruction,
@@ -136,11 +151,8 @@ def _call_gemini_with_fallback(
         temperature=0.4,
     )
 
-    last_error: Optional[Exception] = None
-    tried_models: List[str] = []
-
-    for model_name in PREFERRED_MODELS:
-        tried_models.append(model_name)
+    configured_model = os.environ.get("GEMINI_MODEL", "").strip()
+    for model_name in ([configured_model] if configured_model else PREFERRED_MODELS):
         try:
             response = client.models.generate_content(
                 model=model_name,
@@ -149,44 +161,19 @@ def _call_gemini_with_fallback(
             )
             return _parse_ai_response(response)
         except Exception as err:
-            last_error = err
-            err_str = str(err).lower()
-            # Nếu lỗi xác thực API Key hoặc hết quota thì báo ngay, không cần thử model khác
-            if "api_key_invalid" in err_str or "invalid api key" in err_str or "permission_denied" in err_str:
-                raise RuntimeError("Gemini API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Cài đặt.") from err
-            continue
+            code = getattr(err, "code", None)
+            logger.warning("AI request failed (model=%s, type=%s, status=%s)",
+                model_name if model_name in PREFERRED_MODELS else "configured", type(err).__name__, code if isinstance(code, int) else "unknown")
+            # Only a missing model warrants fallback. Retrying quota, auth,
+            # invalid JSON or a timeout across models multiplies cost and delay.
+            if code != 404:
+                raise RuntimeError("AI hiện chưa khả dụng. Vui lòng thử lại sau hoặc báo người quản trị.") from None
 
-    # Nếu tất cả các model cố định đều lỗi (404/không tìm thấy), quét danh sách model khả dụng có chữ "flash"
-    try:
-        available_flash_models: List[str] = []
-        for m in client.models.list():
-            m_name = getattr(m, "name", "") or ""
-            short_name = m_name.replace("models/", "")
-            if (
-                "flash" in short_name.lower()
-                and "tts" not in short_name.lower()
-                and "image" not in short_name.lower()
-                and "audio" not in short_name.lower()
-                and short_name not in tried_models
-            ):
-                available_flash_models.append(short_name)
-
-        for fallback_model in available_flash_models:
-            try:
-                response = client.models.generate_content(
-                    model=fallback_model,
-                    contents=prompt,
-                    config=config,
-                )
-                return _parse_ai_response(response)
-            except Exception as err:
-                last_error = err
-                continue
-    except Exception:
-        pass
+    if configured_model:
+        raise RuntimeError("AI hiện chưa khả dụng. Vui lòng thử lại sau hoặc báo người quản trị.") from None
 
     raise RuntimeError(
-        f"Không thể gọi Gemini AI sau khi thử các model {tried_models}. Chi tiết lỗi: {last_error}"
+        "AI hiện chưa khả dụng. Vui lòng thử lại sau hoặc báo người quản trị."
     )
 
 
@@ -231,7 +218,7 @@ def generate_smart_plan(
     effective_key = (api_key or cfg.get("gemini_api_key", "")).strip()
     if not effective_key:
         raise ValueError(
-            "Chưa cấu hình Gemini API Key! Vui lòng mở mục Cài đặt (Settings) và nhập Gemini API Key trước khi tạo kế hoạch."
+            "AI chưa được người quản trị cấu hình. Bạn vẫn có thể dùng sổ chi tiêu bình thường."
         )
 
     plan_type_clean = "meal" if plan_type.lower().strip() == "meal" else "hangout"
@@ -290,12 +277,9 @@ YÊU CẦU CẤU TRÚC `items` CHO KẾ HOẠCH "hangout":
 - Tổng `price` của tất cả các mục `activity` phải <= {budget_int:,} VNĐ.
 """
 
-    client = genai.Client(api_key=effective_key)
-    ai_output: AIPlanOutput = _call_gemini_with_fallback(
-        client=client,
-        prompt=user_prompt,
-        system_instruction=system_instruction,
-    )
+    with make_client(effective_key) as client:
+        ai_output: AIPlanOutput = _call_gemini_with_fallback(
+            client=client, prompt=user_prompt, system_instruction=system_instruction)
 
     # Chuẩn hóa và kiểm tra tổng chi phí để đảm bảo tính chính xác toán học
     cleaned_items: List[Dict[str, Any]] = []
@@ -346,15 +330,16 @@ def suggest_replacement(context: Dict[str, Any]) -> Dict[str, Any]:
     """Replace exactly one unpaid item, keeping its category and budget cap."""
     key = load_config().get("gemini_api_key", "").strip()
     if not key:
-        raise ValueError("Chưa cấu hình Gemini API Key")
-    output = _call_gemini_with_fallback(
-        genai.Client(api_key=key),
-        "Đề xuất MỘT hạng mục thay thế khác với hạng mục cũ. Trả về items chỉ có 1 mục. "
-        "Giữ category và khung thời gian. Không tự thay đổi nguyên liệu của các mục khác. "
-        "Giá là ước tính, phải <= budget; với daily_menu ưu tiên giá 0 vì nguyên liệu đã tính riêng. "
-        + json.dumps(context, ensure_ascii=False),
-        "Bạn là trợ lý lập kế hoạch sinh hoạt tại Việt Nam. Trả về JSON đúng schema, không emoji. " + VN_PRICE_ANCHOR,
-    )
+        raise ValueError("AI chưa được người quản trị cấu hình. Bạn vẫn có thể dùng sổ chi tiêu bình thường.")
+    with make_client(key) as client:
+        output = _call_gemini_with_fallback(
+            client,
+            "Đề xuất MỘT hạng mục thay thế khác với hạng mục cũ. Trả về items chỉ có 1 mục. "
+            "Giữ category và khung thời gian. Không tự thay đổi nguyên liệu của các mục khác. "
+            "Giá là ước tính, phải <= budget; với daily_menu ưu tiên giá 0 vì nguyên liệu đã tính riêng. "
+            + json.dumps(context, ensure_ascii=False),
+            "Bạn là trợ lý lập kế hoạch sinh hoạt tại Việt Nam. Trả về JSON đúng schema, không emoji. " + VN_PRICE_ANCHOR,
+        )
     if len(output.items) != 1:
         raise ValueError("AI chưa trả về đúng một phương án. Hãy thử lại.")
     item = output.items[0]

@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, T
 from sqlalchemy.orm import Mapped, relationship
 
 from backend.database import Base
+from backend.tenancy import LedgerOwned
 
 
 def utc_now() -> datetime:
@@ -12,7 +13,7 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class Plan(Base):
+class Plan(LedgerOwned, Base):
     """
     Bảng `plans`: Lưu trữ thông tin tổng quan của một kế hoạch chi tiêu
     (Thực đơn đi chợ cả tuần hoặc Kế hoạch đi chơi/hẹn hò).
@@ -65,7 +66,7 @@ class Plan(Base):
         return data
 
 
-class PlanItem(Base):
+class PlanItem(LedgerOwned, Base):
     """
     Bảng `plan_items`: Lưu trữ từng hạng mục trong kế hoạch.
     - category = "grocery": Danh sách nguyên liệu cần mua gộp khi đi chợ

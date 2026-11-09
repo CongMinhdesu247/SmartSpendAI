@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import ipaddress
 import os
+from uuid import uuid4
 import secrets
 import threading
 import time
@@ -16,14 +17,15 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from pwdlib import PasswordHash
 from sqlalchemy import delete
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from backend import database
-from backend.finance_models import AccessSession
+from backend.finance_models import AccessSession, Account, Category, Preference
+from backend.tenancy import OWNER_ID
 
 SESSION_DAYS = 30
 password_hasher = PasswordHash.recommended()
@@ -54,13 +56,15 @@ class AccessSettings:
     secret: str
     public_url: str = ""
     generated_secret: bool = False
+    accounts: bool = False
 
     @classmethod
     def from_environment(cls):
         return cls(cloud_mode(), os.environ.get("SMARTSPEND_PASSWORD_HASH", ""),
                    os.environ.get("SMARTSPEND_SESSION_SECRET", "") or secrets.token_urlsafe(48),
                    normalize_public_url(os.environ.get("SMARTSPEND_PUBLIC_URL", "") or os.environ.get("RENDER_EXTERNAL_URL", "")),
-                   not bool(os.environ.get("SMARTSPEND_SESSION_SECRET")))
+                   not bool(os.environ.get("SMARTSPEND_SESSION_SECRET")),
+                   cloud_mode() or os.environ.get("SMARTSPEND_ACCOUNTS") == "1")
 
     @property
     def required(self):
@@ -82,7 +86,7 @@ class AccessSettings:
 
 
 def loopback_admin(request):
-    if cloud_mode():
+    if cloud_mode() or getattr(getattr(request.app.state, "access", None), "accounts", False):
         return False
     try:
         return ipaddress.ip_address(request.client.host).is_loopback and request.url.hostname in ("localhost", "127.0.0.1", "::1")
@@ -94,8 +98,14 @@ def session_key(sid):
     return hashlib.sha256(sid.encode()).hexdigest()
 
 
+def password_version(value):
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
 def authenticated(request, settings):
+    request.state.user = None
     if not settings.required:
+        request.state.user = {"id": OWNER_ID, "username": "chuso"}
         return True
     sid = request.session.get("sid")
     if not isinstance(sid, str) or len(sid) > 100 or database.engine is None:
@@ -105,7 +115,19 @@ def authenticated(request, settings):
         if not row:
             return False
         expires = row.expires_at.replace(tzinfo=row.expires_at.tzinfo or timezone.utc)
-        return expires > datetime.now(timezone.utc) and hmac.compare_digest(row.password_version, settings.version)
+        if settings.accounts:
+            account = db.get(Account, row.user_id)
+            if not account or not account.active:
+                return False
+            version = password_version(account.password_hash)
+            user = {"id": account.id, "username": account.username}
+        else:
+            version = settings.version
+            user = {"id": OWNER_ID, "username": "chuso"}
+        if expires > datetime.now(timezone.utc) and hmac.compare_digest(row.password_version, version):
+            request.state.user = user
+            return True
+        return False
 
 
 class LoginLimiter:
@@ -141,7 +163,7 @@ class AccessMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
         is_api = path.startswith("/api/") or path == "/api"
-        public = path in ("/api/auth/status", "/api/auth/login")
+        public = path in ("/api/auth/status", "/api/auth/login", "/api/auth/register")
         response = None
         if self.settings.cloud and path != "/healthz":
             expected_host = urlsplit(self.settings.public_url).netloc.lower()
@@ -154,6 +176,9 @@ class AccessMiddleware(BaseHTTPMiddleware):
                 response = JSONResponse({"detail": "Chưa kết nối được dữ liệu. Hãy thử lại."}, 503)
             if response is None and not public and not request.state.authorized:
                 response = JSONResponse({"detail": "Vui lòng đăng nhập", "code": "LOGIN_REQUIRED"}, 401)
+            if response is None and not public and self.settings.accounts and request.state.authorized:
+                if request.headers.get("x-smartspend-user") != request.state.user["id"]:
+                    response = JSONResponse({"detail": "Tài khoản đã thay đổi. Hãy tải lại ứng dụng.", "code": "ACCOUNT_CHANGED"}, 409)
             if response is None and request.method not in ("GET", "HEAD", "OPTIONS") and self.settings.required:
                 origin = request.headers.get("origin", "").rstrip("/")
                 expected = self.settings.public_url.rstrip("/") or str(request.base_url).rstrip("/")
@@ -178,7 +203,13 @@ class AccessMiddleware(BaseHTTPMiddleware):
 
 
 class LoginInput(BaseModel):
+    username: str = Field(default="chuso", max_length=32)
     password: str = Field(min_length=1, max_length=256)
+
+
+class RegisterInput(BaseModel):
+    username: str = Field(min_length=3, max_length=32, pattern=r"^[a-zA-Z0-9_]+$")
+    password: str = Field(min_length=12, max_length=128)
 
 
 def install_access(app, settings=None):
@@ -194,38 +225,73 @@ def install_access(app, settings=None):
     @router.get("/status")
     def status(request: Request):
         return {"required": settings.required, "authenticated": request.state.authorized,
-                "cloud": settings.cloud, "can_edit_config": not settings.cloud and loopback_admin(request)}
+                "cloud": settings.cloud, "accounts": settings.accounts,
+                "user": getattr(request.state, "user", None),
+                "can_edit_config": not settings.cloud and loopback_admin(request)}
+
+    def check_attempt(request):
+        if not app.state.login_limiter.allow(request.client.host if request.client else "unknown"):
+            raise HTTPException(429, "Đã thử nhiều lần. Hãy đợi 15 phút rồi thử lại.")
+        if not app.state.password_slots.acquire(blocking=False):
+            raise HTTPException(429, "Máy chủ đang bận. Hãy thử lại sau.")
+
+    def start_session(db, request, user_id, version):
+        now = datetime.now(timezone.utc)
+        sid = secrets.token_urlsafe(32)
+        db.execute(delete(AccessSession).where(AccessSession.expires_at <= now))
+        prior = request.session.get("sid")
+        if isinstance(prior, str):
+            db.execute(delete(AccessSession).where(AccessSession.id == session_key(prior)))
+        db.add(AccessSession(id=session_key(sid), user_id=user_id, password_version=version,
+                             expires_at=now + timedelta(days=SESSION_DAYS)))
+        db.commit()
+        request.session.clear()
+        request.session["sid"] = sid
+        return {"authenticated": True}
 
     @router.post("/login")
     def login(payload: LoginInput, request: Request):
         if not settings.required:
             return {"authenticated": True}
-        if not app.state.login_limiter.allow(request.client.host if request.client else "unknown"):
-            raise HTTPException(429, "Đã thử đăng nhập nhiều lần. Hãy đợi 15 phút rồi thử lại.")
-        if not app.state.password_slots.acquire(blocking=False):
-            raise HTTPException(429, "Máy chủ đang bận. Hãy thử lại sau.")
+        check_attempt(request)
         try:
-            try:
-                valid = password_hasher.verify(payload.password, settings.password_hash)
-            except Exception:
-                valid = False
+            with Session(database.engine) as db:
+                account = db.query(Account).filter_by(username=payload.username.strip().lower(), active=True).first() if settings.accounts else None
+                hashed = account.password_hash if account else settings.password_hash
+                try:
+                    valid = password_hasher.verify(payload.password, hashed)
+                except Exception:
+                    valid = False
+                if not valid or (settings.accounts and account is None):
+                    raise HTTPException(401, "Tên đăng nhập hoặc mật khẩu chưa đúng")
+                return start_session(db, request, account.id if account else OWNER_ID, password_version(hashed))
         finally:
             app.state.password_slots.release()
-        if not valid:
-            raise HTTPException(401, "Mật khẩu chưa đúng")
-        now = datetime.now(timezone.utc)
-        sid = secrets.token_urlsafe(32)
-        with Session(database.engine) as db:
-            db.execute(delete(AccessSession).where(AccessSession.expires_at <= now))
-            prior = request.session.get("sid")
-            if isinstance(prior, str):
-                db.execute(delete(AccessSession).where(AccessSession.id == session_key(prior)))
-            db.add(AccessSession(id=session_key(sid), password_version=settings.version,
-                                 expires_at=now + timedelta(days=SESSION_DAYS)))
-            db.commit()
-        request.session.clear()
-        request.session["sid"] = sid
-        return {"authenticated": True}
+
+    @router.post("/register")
+    def register(payload: RegisterInput, request: Request):
+        if not settings.accounts:
+            raise HTTPException(404, "Chưa bật đăng ký tài khoản")
+        check_attempt(request)
+        try:
+            username = payload.username.lower()
+            if username == "chuso":
+                raise HTTPException(409, "Tên đăng nhập đã được sử dụng")
+            hashed = password_hasher.hash(payload.password)
+            with Session(database.engine) as db:
+                account = Account(id=str(uuid4()), username=username, password_hash=hashed)
+                db.add(account)
+                from backend.finance_api import DEFAULT_CATEGORIES
+                for name, color in DEFAULT_CATEGORIES:
+                    db.add(Category(user_id=account.id, name=name, color=color))
+                db.add(Preference(user_id=account.id, key="seeded", value="1"))
+                try:
+                    return start_session(db, request, account.id, password_version(hashed))
+                except IntegrityError:
+                    db.rollback()
+                    raise HTTPException(409, "Tên đăng nhập đã được sử dụng")
+        finally:
+            app.state.password_slots.release()
 
     @router.post("/logout")
     def logout(request: Request):
@@ -240,7 +306,7 @@ def install_access(app, settings=None):
     @router.post("/logout-all")
     def logout_all(request: Request):
         with Session(database.engine) as db:
-            db.execute(delete(AccessSession))
+            db.execute(delete(AccessSession).where(AccessSession.user_id == request.state.user["id"]))
             db.commit()
         request.session.clear()
         return {"success": True}

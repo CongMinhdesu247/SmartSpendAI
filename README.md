@@ -7,7 +7,7 @@ Muốn dùng iPhone qua 4G/5G khi máy tính tắt: xem [cấu hình hosting và
 Ứng dụng quản lý chi tiêu cá nhân thông minh theo kiến trúc **3 tầng (3-Tier Architecture)**:
 - **Frontend**: Web Dashboard hiện đại, tương thích cả **Desktop (`.exe`)** và **iPhone PWA** (thêm vào Màn hình chính dùng full-screen).
 - **Backend**: Python **FastAPI** + **Google Gemini AI** tích hợp bảng neo giá thực tế Việt Nam (`VN_PRICE_ANCHOR`).
-- **Database**: **Supabase PostgreSQL** trên đám mây thông qua **SQLAlchemy ORM** (tự động fallback về `SQLite` cục bộ nếu chưa nhập chuỗi kết nối).
+- **Database**: **Supabase PostgreSQL** qua **SQLAlchemy ORM**, hoặc `SQLite` cục bộ khi chưa cấu hình PostgreSQL. Nếu PostgreSQL lỗi, app giữ nguồn dữ liệu đã chọn và yêu cầu kết nối lại.
 
 ---
 
@@ -57,7 +57,7 @@ Trình duyệt sẽ tự động mở địa chỉ `http://127.0.0.1:8000`.
    - Đăng nhập [Supabase Dashboard](https://supabase.com/dashboard), tạo Project miễn phí.
    - Nhấn nút **Connect** (trên thanh công cụ) $\rightarrow$ sao chép chuỗi **URI** (dạng `postgresql://postgres.[ref]:[password]@aws-0-...pooler.supabase.com:6543/postgres`).
    - Dán vào ô số 2 và nhấn **💾 Lưu & Kết nối Database**.
-   - Ứng dụng sẽ tự động kết nối và khởi tạo bảng `plans`, `plan_items` trên đám mây Supabase ngay lập tức mà không cần khởi động lại.
+   - Database PostgreSQL cần được chuẩn bị theo [hướng dẫn nâng cấp sổ riêng](docs/private-accounts.md) trước, kể cả khi kết nối từ desktop. App kiểm tra schema và quyền truy cập trước khi lưu cấu hình mới; nếu lỗi, cấu hình cũ được giữ nguyên.
 
 ### Bước 4: Cài đặt lên iPhone (PWA)
 1. Đảm bảo iPhone và máy tính đang kết nối chung một mạng Wi-Fi.
@@ -73,4 +73,16 @@ Nhấn đúp vào file **`build_exe.bat`** (hoặc chạy `./build_exe.bat` tron
 ```text
 dist\SmartSpendPro.exe
 ```
+
+Cài các phiên bản đã cố định bằng `python -m pip install -r requirements.txt` trước khi build. Script dừng và báo thất bại nếu thiếu thư viện hoặc PyInstaller lỗi. Chạy tự động bằng `build_exe.bat --no-pause`.
+
+Desktop kiểm tra HTTP `/healthz` trước khi mở cửa sổ. Lỗi khởi động được lưu tại `%LOCALAPPDATA%\SmartSpendPro\logs\desktop.log`. Có thể kiểm tra khởi động không mở cửa sổ bằng `SmartSpendPro.exe --check-startup` (mã thoát 0 khi thành công).
+
+Tích hoàn thành hạng mục có giá sẽ tự ghi chi và cập nhật biểu đồ; xem [quy tắc kế hoạch và thanh toán](docs/finance-guide.md).
+
+## Kiểm thử
+
+`python -m pip install -r requirements-dev.txt`, sau đó chạy `python -m unittest discover -s tests -v` và các file `tests/test_*.cjs` bằng Node. GitHub Actions chạy cả PostgreSQL riêng để kiểm tra migration/RLS, các bài JavaScript và build Windows. Cấu hình PostgreSQL thử nghiệm cục bộ được mô tả trong [sổ riêng](docs/private-accounts.md).
+
+AI giới hạn 10 yêu cầu mỗi phút cho mỗi tài khoản và 2 yêu cầu đồng thời trên một server. Mỗi model chờ tối đa 20 giây, chỉ đổi sang model dự phòng khi nhận lỗi 404; không đổi model khi hết quota hoặc lỗi xác thực. Khi đặt `GEMINI_MODEL`, app chỉ gọi model đã chọn.
 

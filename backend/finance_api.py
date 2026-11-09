@@ -1,18 +1,19 @@
 """Personal spending ledger, budgets, bills and savings. No AI needed for CRUD."""
 import calendar
 from datetime import date, datetime, timedelta, timezone
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 from uuid import UUID
 from uuid import uuid5, NAMESPACE_URL
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func
+from sqlalchemy import func, case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend import database, models
 from backend.finance_models import Budget, Category, Contribution, Goal, Preference, RecurringBill, Transaction, normalize_search
+from backend.tenancy import OWNER_ID
 
 router = APIRouter(prefix="/api/finance", tags=["Finance"])
 MONEY_MAX = 9_000_000_000_000
@@ -25,17 +26,17 @@ def today():
     return datetime.now(timezone(timedelta(hours=7))).date()
 
 
-def initialize_finance(engine):
+def initialize_finance(engine, user_id=OWNER_ID):
     """Seed once without modifying any existing plans, prices or completion flags."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     from sqlalchemy.dialects.sqlite import insert as sqlite_insert
     insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
     with Session(engine) as db, db.begin():
-        if db.get(Preference, "seeded"):
+        if db.get(Preference, (user_id, "seeded")):
             return
         for name, color in DEFAULT_CATEGORIES:
-            db.execute(insert(Category).values(name=name, color=color, archived=False).on_conflict_do_nothing(index_elements=["name"]))
-        db.execute(insert(Preference).values(key="seeded", value="1").on_conflict_do_nothing(index_elements=["key"]))
+            db.execute(insert(Category).values(user_id=user_id, name=name, color=color, archived=False).on_conflict_do_nothing(index_elements=["user_id", "name"]))
+        db.execute(insert(Preference).values(user_id=user_id, key="seeded", value="1").on_conflict_do_nothing(index_elements=["user_id", "key"]))
 
 
 class Named(BaseModel):
@@ -75,6 +76,12 @@ class TransactionInput(BaseModel):
 class BudgetInput(BaseModel):
     amount: int = Field(ge=0, le=MONEY_MAX, strict=True)
     category_id: Optional[int] = Field(default=None, gt=0)
+
+
+class EditTransactionInput(TransactionInput):
+    # Server-created checklist payments have an opaque origin key. New manual
+    # transactions still accept UUIDs only, so clients cannot claim this origin.
+    client_id: UUID | Annotated[str, Field(pattern=r"^plan-completion:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")]
 
 
 class BillInput(Named):
@@ -248,7 +255,7 @@ def create_transaction(payload: TransactionInput, db: Session = Depends(database
 
 
 @router.put("/transactions/{transaction_id}")
-def edit_transaction(transaction_id: int, payload: TransactionInput, db: Session = Depends(database.get_db)):
+def edit_transaction(transaction_id: int, payload: EditTransactionInput, db: Session = Depends(database.get_db)):
     row = found(db, Transaction, transaction_id)
     if row.deleted_at:
         raise HTTPException(409, "Giao dịch đã bị xóa")
@@ -288,15 +295,18 @@ def overview(month: str, db: Session = Depends(database.get_db)):
     groups = db.query(Transaction.category_id, func.sum(Transaction.amount), func.count(Transaction.id)).filter(
         Transaction.deleted_at.is_(None), Transaction.kind == "expense", Transaction.spent_on >= start,
         Transaction.spent_on < end).group_by(Transaction.category_id).all()
-    daily = db.query(Transaction.spent_on, func.sum(Transaction.amount)).filter(
-        Transaction.deleted_at.is_(None), Transaction.kind == "expense", Transaction.spent_on >= start,
+    daily = db.query(Transaction.spent_on,
+        func.sum(case((Transaction.kind == "expense", Transaction.amount), else_=0)),
+        func.sum(case((Transaction.kind == "income", Transaction.amount), else_=0))).filter(
+        Transaction.deleted_at.is_(None), Transaction.spent_on >= start,
         Transaction.spent_on < end).group_by(Transaction.spent_on).order_by(Transaction.spent_on).all()
     budgets = db.query(Budget).filter(Budget.month == start).all()
     budget = next((b.amount for b in budgets if b.category_id is None), None)
     return {"income": int(totals.get("income", 0)), "expense": int(totals.get("expense", 0)),
             "budget": budget, "remaining": budget - int(totals.get("expense", 0)) if budget is not None else None,
             "categories": [{"category_id": key, "amount": int(amount), "count": count} for key, amount, count in groups],
-            "daily": [{"date": d.isoformat(), "amount": int(amount)} for d, amount in daily],
+            "daily": [{"date": d.isoformat(), "amount": int(expense)} for d, expense, income in daily if expense],
+            "daily_cashflow": [{"date": d.isoformat(), "expense": int(expense), "income": int(income)} for d, expense, income in daily],
             "budgets": [{"category_id": b.category_id, "amount": b.amount} for b in budgets]}
 
 
@@ -306,7 +316,7 @@ def set_budget(month: str, payload: BudgetInput, db: Session = Depends(database.
     if payload.category_id:
         valid_category(db, payload.category_id)
     key = f"{month}:{payload.category_id or 'all'}"
-    row = db.get(Budget, key)
+    row = db.get(Budget, (db.info.get("user_id", OWNER_ID), key))
     if row:
         row.amount = payload.amount
     else:
@@ -471,14 +481,14 @@ def remove_contribution(contribution_id: int, db: Session = Depends(database.get
 
 @router.get("/preferences")
 def preferences(db: Session = Depends(database.get_db)):
-    return {key: (db.get(Preference, key).value if db.get(Preference, key) else default)
+    return {key: (db.get(Preference, (db.info.get("user_id", OWNER_ID), key)).value if db.get(Preference, (db.info.get("user_id", OWNER_ID), key)) else default)
             for key, default in (("tastes", ""), ("avoid", ""), ("people", "2 người"))}
 
 
 @router.put("/preferences")
 def save_preferences(payload: PreferencesInput, db: Session = Depends(database.get_db)):
     for key, value in payload.model_dump().items():
-        row = db.get(Preference, key)
+        row = db.get(Preference, (db.info.get("user_id", OWNER_ID), key))
         if row:
             row.value = value
         else:

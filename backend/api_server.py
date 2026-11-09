@@ -1,21 +1,26 @@
 import socket
 import json
 import sys
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Literal
 from datetime import datetime
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Query
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
+from sqlalchemy import or_, and_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend import database, models
 from backend.ai_service import generate_smart_plan, suggest_replacement
 from backend.finance_api import router as finance_router, initialize_finance, preferences as read_preferences
 from backend.finance_models import Transaction, PlanArchive
+from backend.ai_limits import ai_slot
+from backend.plan_payments import sync_completion_payment
 from backend.access import install_access, loopback_admin, normalize_public_url
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
@@ -27,6 +32,13 @@ else:
 # =====================================================================
 # PYDANTIC REQUEST SCHEMAS CHO REST API
 # =====================================================================
+logger = logging.getLogger(__name__)
+
+
+class TrimmedInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+
 class ConfigUpdateRequest(BaseModel):
     gemini_api_key: Optional[str] = Field(default=None, description="Google Gemini API Key")
     database_url: Optional[str] = Field(
@@ -37,9 +49,10 @@ class ConfigUpdateRequest(BaseModel):
     clear_database_url: bool = False
 
 
-class GeneratePlanRequest(BaseModel):
+class GeneratePlanRequest(TrimmedInput):
     title: Optional[str] = Field(
         default=None,
+        max_length=255,
         description="Tên kế hoạch tùy chọn do người dùng đặt (nếu để trống AI sẽ tự đặt)",
     )
     plan_type: Literal["meal", "hangout"] = Field(
@@ -52,19 +65,21 @@ class GeneratePlanRequest(BaseModel):
         le=2000000000,
         description="Ngân sách tối đa (VNĐ)",
     )
-    region: str = Field(default="TP. Hồ Chí Minh", description="Khu vực / Thành phố")
+    region: str = Field(default="TP. Hồ Chí Minh", min_length=1, max_length=120, description="Khu vực / Thành phố")
     days_or_people: str = Field(
         default="7 ngày cho 1-2 người",
+        min_length=1, max_length=120,
         description="Thời lượng hoặc số lượng người tham gia",
     )
     preferences: str = Field(
         default="",
+        max_length=2000,
         description="Sở thích, khẩu vị, hình thức hoặc yêu cầu đặc biệt",
     )
     pantry: str = Field(default="", max_length=2000)
 
 
-class PatchItemRequest(BaseModel):
+class PatchItemRequest(TrimmedInput):
     is_completed: Optional[bool] = Field(
         default=None,
         description="Trạng thái đã mua / đã chi tiêu",
@@ -75,8 +90,8 @@ class PatchItemRequest(BaseModel):
         le=2000000000,
         description="Giá tiền thực tế chỉnh sửa (VNĐ)",
     )
-    name: Optional[str] = Field(default=None, description="Tên mục (tùy chọn chỉnh sửa)")
-    details: Optional[str] = Field(default=None, description="Chi tiết mục (tùy chọn chỉnh sửa)")
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255, description="Tên mục (tùy chọn chỉnh sửa)")
+    details: Optional[str] = Field(default=None, max_length=5000, description="Chi tiết mục (tùy chọn chỉnh sửa)")
 
 
 # =====================================================================
@@ -160,6 +175,11 @@ def get_config(request: Request) -> Dict[str, Any]:
     cfg = database.load_config()
     db_status = database.get_db_status()
     api_key = cfg.get("gemini_api_key", "")
+    can_edit = loopback_admin(request)
+    if not can_edit:
+        return {"has_api_key": bool(api_key), "has_database_url": bool(cfg.get("database_url")),
+                "can_edit_config": False, "cloud_mode": database.is_cloud_mode(),
+                "db_status": {"is_cloud_postgres": db_status["is_cloud_postgres"]}}
     masked_key = (
         f"{api_key[:6]}...{api_key[-4:]}" if len(api_key) > 10 else ("Đã nhập" if api_key else "")
     )
@@ -167,7 +187,7 @@ def get_config(request: Request) -> Dict[str, Any]:
         "gemini_api_key_masked": masked_key,
         "has_api_key": bool(api_key),
         "has_database_url": bool(cfg.get("database_url", "")),
-        "can_edit_config": loopback_admin(request),
+        "can_edit_config": can_edit,
         "cloud_mode": database.is_cloud_mode(),
         "db_status": db_status,
     }
@@ -200,23 +220,21 @@ def update_config(payload: ConfigUpdateRequest, request: Request) -> Dict[str, A
     if payload.clear_database_url:
         new_db_url = ""
 
-    saved_cfg = database.save_config(
-        {
-            "gemini_api_key": new_api_key,
-            "database_url": new_db_url,
-            "cloud_url": current_cfg.get("cloud_url", ""),
-        }
-    )
-
-    # Re-init kết nối SQLAlchemy và tự động tạo bảng trên Supabase PostgreSQL
-    conn_result = database.init_db_connection(custom_url=saved_cfg["database_url"])
-    initialize_finance(database.engine)
+    next_cfg = {
+        "gemini_api_key": new_api_key,
+        "database_url": new_db_url,
+        "cloud_url": current_cfg.get("cloud_url", ""),
+    }
+    try:
+        conn_result = database.init_db_connection(custom_url=new_db_url, config_to_save=next_cfg)
+    except database.DatabaseConnectionError as exc:
+        raise HTTPException(503, str(exc)) from None
 
     return {
         "success": True,
         "connection": conn_result,
         "db_status": database.get_db_status(),
-        "has_api_key": bool(saved_cfg["gemini_api_key"]),
+        "has_api_key": bool(new_api_key),
     }
 
 
@@ -276,6 +294,7 @@ def health():
 def api_generate_plan(
     payload: GeneratePlanRequest,
     db: Session = Depends(database.get_db),
+    _ai=Depends(ai_slot),
 ) -> Dict[str, Any]:
     """Gọi Gemini AI tạo kế hoạch chi tiêu -> Lưu vào Database -> Trả về JSON chi tiết."""
     try:
@@ -295,6 +314,7 @@ def api_generate_plan(
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as exc:
+        logger.error("AI plan generation failed (%s)", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Chưa gọi được AI. Kiểm tra API key và thử lại.")
 
     try:
@@ -330,6 +350,7 @@ def api_generate_plan(
         return new_plan.to_dict(include_items=True)
     except Exception as db_exc:
         db.rollback()
+        logger.error("Saving AI plan failed (%s)", type(db_exc).__name__)
         raise HTTPException(
             status_code=500,
             detail="Chưa lưu được kế hoạch. Hãy thử lại.",
@@ -339,14 +360,22 @@ def api_generate_plan(
 @app.get("/api/plans")
 def list_plans(
     plan_type: Optional[str] = None,
+    before_id: Optional[int] = Query(None, gt=0),
+    limit: int = Query(30, ge=1, le=100),
     db: Session = Depends(database.get_db),
 ) -> List[Dict[str, Any]]:
-    """Lấy danh sách toàn bộ kế hoạch từ Database (sắp xếp mới nhất lên đầu)."""
+    """Bounded pages, ordered by creation time and ID; before_id is the last row."""
     query = db.query(models.Plan)
     if plan_type in ("meal", "hangout"):
         query = query.filter(models.Plan.plan_type == plan_type)
 
-    plans = query.order_by(models.Plan.created_at.desc(), models.Plan.id.desc()).all()
+    if before_id is not None:
+        anchor = db.get(models.Plan, before_id)
+        if not anchor:
+            raise HTTPException(409, "Danh sách vừa thay đổi. Hãy tải lại kế hoạch.")
+        query = query.filter(or_(models.Plan.created_at < anchor.created_at,
+            and_(models.Plan.created_at == anchor.created_at, models.Plan.id < anchor.id)))
+    plans = query.order_by(models.Plan.created_at.desc(), models.Plan.id.desc()).limit(limit).all()
     return [plan.to_dict(include_items=True) for plan in plans]
 
 
@@ -372,7 +401,7 @@ def update_plan_item(
     Tick/bỏ tick `is_completed` VÀ/HOẶC sửa lại giá tiền thực tế (`price`),
     sau đó tự động tính lại tổng `actual_spent` và `estimated_cost` của `Plan` trong Database.
     """
-    item = db.query(models.PlanItem).filter(models.PlanItem.id == item_id).first()
+    item = db.query(models.PlanItem).filter(models.PlanItem.id == item_id).with_for_update().first()
     if not item:
         raise HTTPException(status_code=404, detail="Không tìm thấy hạng mục chi tiêu này.")
 
@@ -385,6 +414,8 @@ def update_plan_item(
     if payload.details is not None:
         item.details = payload.details.strip()
 
+    # Persist the checklist and its automatic expense in the same transaction.
+    sync_completion_payment(db, item, payload)
     db.add(item)
     db.flush()
 
@@ -394,9 +425,12 @@ def update_plan_item(
         return {"item": item.to_dict()}
 
     recalculate_plan_totals(db, plan)
-    db.commit()
-    db.refresh(item)
-    db.refresh(plan)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Hạng mục vừa thay đổi. Hãy tải lại và thử lại.") from None
+    db.expire_all()
 
     return {
         "item": item.to_dict(),
@@ -487,12 +521,12 @@ def copy_plan(plan_id: int, db: Session = Depends(database.get_db)):
     return duplicate.to_dict()
 
 
-class ReplaceItemRequest(BaseModel):
+class ReplaceItemRequest(TrimmedInput):
     preferences: str = Field(default="", max_length=2000)
 
 
 @app.post("/api/items/{item_id}/replace")
-def replace_item(item_id: int, payload: ReplaceItemRequest, db: Session = Depends(database.get_db)):
+def replace_item(item_id: int, payload: ReplaceItemRequest, db: Session = Depends(database.get_db), _ai=Depends(ai_slot)):
     item = db.get(models.PlanItem, item_id)
     if not item:
         raise HTTPException(404, "Không tìm thấy hạng mục")
@@ -510,7 +544,8 @@ def replace_item(item_id: int, payload: ReplaceItemRequest, db: Session = Depend
         replacement = suggest_replacement(context)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    except Exception:
+    except Exception as exc:
+        logger.error("AI item replacement failed (%s)", type(exc).__name__)
         raise HTTPException(502, "Chưa đổi được mục bằng AI. Hãy thử lại.")
     db.expire_all()
     item = db.query(models.PlanItem).filter_by(id=item_id).with_for_update().first()

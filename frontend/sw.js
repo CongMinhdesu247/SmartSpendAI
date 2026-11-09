@@ -1,4 +1,4 @@
-const CACHE_NAME = "smartspend-pro-v5";
+const CACHE_NAME = "smartspend-pro-v12";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -10,6 +10,10 @@ const STATIC_ASSETS = [
   "/vendor/chart.umd.min.js",
   "/icons.svg",
   "/favicon.svg",
+  "/favicon-32.png",
+  "/apple-touch-icon.png",
+  "/icons/smartspend-192.png",
+  "/icons/smartspend-512.png",
   "/manifest.json"
 ];
 

@@ -6,7 +6,7 @@ App cần backend chạy trên hosting và một địa chỉ HTTPS. Database đ
 
 - `Dockerfile`: Python server riêng, không cài giao diện desktop.
 - `render.yaml`: Web Service Docker ở Singapore, gói Free, kiểm tra `/healthz`.
-- Đăng nhập một chủ sở hữu bằng mật khẩu Argon2id; phiên đăng nhập lưu trong database, cookie HttpOnly/Secure/SameSite Strict trên cloud. Đăng xuất thu hồi phiên ở server.
+- Đăng nhập bằng tài khoản riêng và mật khẩu Argon2id; phiên đăng nhập lưu trong database, cookie HttpOnly/Secure/SameSite Strict trên cloud. Đăng xuất thu hồi phiên ở server. Xem [quy trình nâng cấp sổ riêng](private-accounts.md) trước khi phát hành phiên bản này.
 - API dữ liệu yêu cầu đăng nhập. API không trả về khóa Gemini/chuỗi kết nối thô. Cấu hình cloud được quản lý bằng biến môi trường.
 - Cloud yêu cầu PostgreSQL và không chuyển sang SQLite tạm khi lỗi kết nối.
 - QR được tạo trong app, không gửi địa chỉ app sang dịch vụ QR bên ngoài.
@@ -53,4 +53,4 @@ Không đưa SQLite, bản sao lưu, `.env.cloud`, mật khẩu hoặc `config.j
 - Kiểm tra đăng nhập đúng/sai, API khi chưa đăng nhập, đăng xuất và QR trên kích thước iPhone.
 - Kiểm tra URL triển khai thật và đăng nhập từ Safari/4G sau khi có hosting.
 
-Phiên bản này là một sổ chi tiêu của một chủ sở hữu. Người biết mật khẩu được truy cập cùng dữ liệu; chưa có tài khoản tách biệt cho nhiều người.
+Phiên bản sổ riêng cần chạy migration trước khi deploy. Sau nâng cấp, mỗi người đăng ký tài khoản và chỉ truy cập sổ của mình; sổ cũ thuộc `chuso` với mật khẩu hiện tại. Database vẫn là Supabase hiện tại, không cần tạo thêm database. Chưa có chức năng chia sẻ sổ hoặc khôi phục mật khẩu qua email.

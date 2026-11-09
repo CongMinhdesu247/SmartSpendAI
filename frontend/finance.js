@@ -1,7 +1,9 @@
 /* Personal ledger workspace. Plans and actual transactions remain independent. */
 const FINANCE_COLORS = { orange: '#c46b2a', green: '#16a36b', violet: '#8b5cf6', sky: '#0284c7', indigo: '#6366f1', pink: '#db5b91', teal: '#0d9488', blue: '#3b82f6', slate: '#64748b' };
-const FINANCE_VIEWS = { spending: ['Chi tiêu hằng ngày', 'Thu, chi và ngân sách theo tháng.'], plans: ['Kế hoạch AI', 'Thực đơn và lịch trình trong ngân sách.'], recurring: ['Khoản định kỳ', 'Theo dõi lịch và xác nhận thanh toán.'], goals: ['Mục tiêu tiết kiệm', 'Theo dõi tiền dành riêng cho từng mục tiêu.'] };
-const OUTBOX_KEY = 'smartspend-outbox-v1';
+const FINANCE_VIEWS = { spending: ['Sổ chi tiêu', 'Thu, chi và ngân sách theo tháng.'], plans: ['Kế hoạch', 'Gợi ý AI, khoản định kỳ và mục tiêu tiết kiệm.'], recurring: ['Khoản định kỳ', 'Theo dõi lịch và xác nhận thanh toán.'], goals: ['Mục tiêu tiết kiệm', 'Theo dõi tiền dành riêng cho từng mục tiêu.'], account: ['Tài khoản', 'Sổ riêng và các tùy chọn của bạn.'] };
+let lastPlanningView = 'plans';
+const OUTBOX_KEY = 'smartspend-outbox-v2';
+function expenseOutboxKey() { return window.smartspendStorageKey(OUTBOX_KEY); }
 let financeState = { categories: [], overview: null, transactions: [], total: 0, bills: [], goals: [], preferences: {} };
 let financeMonth = localISODate().slice(0, 7);
 let financeOffset = 0, financeEpoch = 0, financeEditorSave = null, financeSearchTimer;
@@ -43,16 +45,38 @@ async function financeApi(path, options = {}) {
   return data;
 }
 
+function openPlanningWorkspace() { switchWorkspace(lastPlanningView); }
+
 function switchWorkspace(view) {
-  if (!FINANCE_VIEWS[view]) return;
+  if (!FINANCE_VIEWS[view]) view = 'spending';
+  const planning = ['plans', 'recurring', 'goals'].includes(view);
+  if (planning) lastPlanningView = view;
   for (const key of Object.keys(FINANCE_VIEWS)) document.getElementById(`${key}View`).classList.toggle('hidden', key !== view);
+  const mainView = planning ? 'plans' : view;
   document.querySelectorAll('[data-view]').forEach(button => {
-    if (button.dataset.view === view) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
+    if (button.dataset.view === mainView) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
+  document.querySelectorAll('[data-plan-view]').forEach(button => {
+    if (button.dataset.planView === view) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
+  });
+  document.getElementById('planningNav').classList.toggle('hidden', !planning);
+  document.getElementById('primaryLedgerAction').classList.toggle('hidden', view !== 'spending');
   document.getElementById('workspaceTitle').textContent = FINANCE_VIEWS[view][0];
   document.getElementById('workspaceSubtitle').textContent = FINANCE_VIEWS[view][1];
+  document.getElementById('ledgerTools').open = false;
+  if (view === 'spending') cashflowChart?.resize?.();
+  window.scrollTo?.({top: 0, behavior: 'auto'});
   try { sessionStorage.setItem('smartspend-view', view); } catch (_) { /* Navigation still works without storage. */ }
 }
+
+document.addEventListener('click', event => {
+  const tools = document.getElementById('ledgerTools');
+  if (tools?.open && (!tools.contains(event.target) || event.target.closest('button'))) tools.open = false;
+});
+document.addEventListener('keydown', event => {
+  const tools = document.getElementById('ledgerTools');
+  if (event.key === 'Escape' && tools?.open) { tools.open = false; tools.querySelector('summary').focus(); }
+});
 
 function transactionQuery(offset = financeOffset, limit = 30) {
   const params = new URLSearchParams({ month: financeMonth, offset, limit });
@@ -81,7 +105,7 @@ async function refreshFinance() {
     }
     financeState = { categories, overview, transactions: transactions.items, total: transactions.total, bills, goals, preferences };
     financeCached = false;
-    try { localStorage.setItem(`smartspend-cache:${month}`, JSON.stringify({ ...financeState, queryKey: transactionQuery().toString(), savedAt: new Date().toISOString() })); } catch (_) { /* Cache is optional; the server remains the source of truth. */ }
+    try { localStorage.setItem(window.smartspendStorageKey(`smartspend-cache:${month}`), JSON.stringify({ ...financeState, queryKey: transactionQuery().toString(), savedAt: new Date().toISOString() })); } catch (_) { /* Cache is optional; the server remains the source of truth. */ }
     if (!financePreferencesLoaded) {
       const people = document.getElementById('peopleInput');
       if (people && people.value === '2 người') people.value = preferences.people || '2 người';
@@ -92,7 +116,7 @@ async function refreshFinance() {
     if (epoch !== financeEpoch) return;
     if (error.status === 401) return;
     let cached;
-    try { cached = JSON.parse(localStorage.getItem(`smartspend-cache:${month}`) || 'null'); } catch (_) { cached = null; }
+    try { cached = JSON.parse(localStorage.getItem(window.smartspendStorageKey(`smartspend-cache:${month}`)) || 'null'); } catch (_) { cached = null; }
     if (cached) {
       financeState = cached;
       if (cached.queryKey !== transactionQuery().toString()) {
@@ -113,6 +137,8 @@ function renderFinance() {
   const old = filter.value;
   filter.innerHTML = `<option value="">Tất cả danh mục</option>${financeState.categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}${c.archived ? ' (lưu trữ)' : ''}</option>`).join('')}`;
   filter.value = old;
+  const activeFilters = Number(!!filter.value) + Number(!!document.getElementById('transactionKindFilter').value) + Number(!!document.getElementById('transactionSearch').value.trim());
+  document.getElementById('transactionFilterLabel').textContent = activeFilters ? `Tìm kiếm và lọc (${activeFilters})` : 'Tìm kiếm và lọc';
 }
 
 function renderFinanceStats() {
@@ -139,19 +165,88 @@ function renderCategoryBreakdown() {
   }).join('') : financeEmpty('Chưa có khoản chi trong tháng này.', '<button type="button" class="ui-button quiet" onclick="openTransactionEditor()">Ghi khoản đầu tiên</button>');
 }
 
-function renderDailySpending() {
-  const data = financeState.overview;
-  const [year, month] = financeMonth.split('-').map(Number);
+let cashflowChart = null;
+
+// Daily closing balance: expenses increase the line; income decreases it.
+function buildCashflowSeries(monthValue, rows, budget, currentDate = localISODate()) {
+  const [year, month] = monthValue.split('-').map(Number);
   const days = new Date(year, month, 0).getDate();
-  const values = new Map((data?.daily || []).map(d => [Number(d.date.slice(-2)), d.amount]));
-  const maximum = Math.max(1, ...values.values());
-  const description = (data?.daily || []).map(d => `${displayDate(d.date)}: ${formatVND(d.amount)}`).join('; ') || 'Chưa có khoản chi';
-  document.getElementById('dailySpendingChart').innerHTML = `<div class="daily-columns" role="img" aria-label="${escapeHtml(description)}">${Array.from({ length: days }, (_, i) => {
-    const amount = values.get(i + 1) || 0;
-    return `<span class="daily-column" aria-hidden="true" data-label="${i + 1}: ${formatVND(amount)}"><i style="height:${amount ? Math.max(3, amount / maximum * 100) : 2}%" class="${amount ? 'has-spending' : ''}"></i></span>`;
-  }).join('')}</div><div class="chart-axis"><span>01</span><span>${String(Math.ceil(days / 2)).padStart(2, '0')}</span><span>${days}</span></div>`;
-  const ratio = data?.budget ? Math.round(data.expense / data.budget * 100) : null;
-  document.getElementById('monthBudgetStatus').innerHTML = data?.budget != null ? `<span>${ratio == null ? (data.expense ? 'Đã vượt ngân sách 0 ₫' : 'Chưa phát sinh chi tiêu') : `${ratio}% ngân sách đã dùng`}</span><button type="button" class="text-action" onclick="openBudgetEditor()">Điều chỉnh</button>` : '<span>Đặt ngân sách để theo dõi hạn mức tháng.</span><button type="button" class="text-action" onclick="openBudgetEditor()">Đặt ngay</button>';
+  const byDay = new Map();
+  for (const row of rows) {
+    if (!row.date.startsWith(monthValue + '-')) continue;
+    const day = Number(row.date.slice(-2));
+    if (day < 1 || day > days) continue;
+    const previous = byDay.get(day) || { expense: 0, income: 0 };
+    byDay.set(day, { expense: previous.expense + row.expense, income: previous.income + row.income });
+  }
+  const currentMonth = currentDate.slice(0, 7);
+  const lastDay = monthValue < currentMonth ? days : Math.max(monthValue === currentMonth ? Number(currentDate.slice(-2)) : 0, ...byDay.keys());
+  const points = [{ x: 0, y: 0, expense: 0, income: 0 }];
+  let net = 0;
+  for (let day = 1; day <= lastDay; day++) {
+    const amounts = byDay.get(day) || { expense: 0, income: 0 };
+    const next = net + amounts.expense - amounts.income;
+    // Split a crossing exactly at the limit, so only the exceeded portion is red.
+    if (budget != null && (net - budget) * (next - budget) < 0) {
+      points.push({ x: day - 1 + (budget - net) / (next - net), y: budget, crossing: true });
+    }
+    points.push({ x: day, y: next, ...amounts });
+    net = next;
+  }
+  const peak = Math.max(0, ...points.map(p => p.y));
+  const lowest = Math.min(0, ...points.map(p => p.y));
+  return { points, days, net, peak, over: budget != null && net > budget,
+    minimum: lowest < 0 ? lowest * 1.08 : 0,
+    maximum: budget != null && budget > 0 && peak <= budget ? budget : Math.max(1, peak, budget || 0) * 1.08 };
+}
+
+function cashflowSegmentColor(context, budget) {
+  return budget != null && Math.max(context.p0.parsed.y, context.p1.parsed.y) > budget ? '#dc2626' : '#6366f1';
+}
+
+function renderDailySpending() {
+  if (cashflowChart) { cashflowChart.destroy(); cashflowChart = null; }
+  const data = financeState.overview;
+  const container = document.getElementById('dailySpendingChart');
+  const status = document.getElementById('monthBudgetStatus');
+  if (!data || !Array.isArray(data.daily_cashflow)) {
+    container.innerHTML = financeEmpty('Kết nối lại để tải biểu đồ thu chi trong tháng.');
+    status.innerHTML = '';
+    return;
+  }
+  const series = buildCashflowSeries(financeMonth, data.daily_cashflow, data.budget);
+  const explanation = `Chi ròng lũy kế: ${formatVND(series.net)}. ${data.budget == null ? 'Chưa đặt ngân sách tháng.' : `Ngân sách ${formatVND(data.budget)}.${series.over ? ` Vượt ${formatVND(series.net - data.budget)}.` : ''}`}`;
+  container.innerHTML = `<div class="cashflow-canvas"><canvas id="cashflowCanvas" role="img" aria-label="${escapeHtml(explanation)}"></canvas></div><div class="cashflow-legend"><span><i class="cashflow-key"></i>Chi trừ thu (lũy kế)</span>${data.budget != null ? '<span><i class="cashflow-key budget"></i>Ngân sách tháng</span><span><i class="cashflow-key exceeded"></i>Vượt ngân sách</span>' : ''}</div><p class="cashflow-help">Chi tiền: đường tăng · Nhận tiền: đường giảm. Số dư chốt cuối mỗi ngày.</p>`;
+  status.classList.toggle('is-over-budget', series.over);
+  status.innerHTML = `<span role="status">${data.budget == null ? 'Đặt ngân sách tháng để bật cảnh báo vượt chi.' : series.over ? `Đã vượt ngân sách ${formatVND(series.net - data.budget)}` : `Chi ròng ${formatVND(series.net)} / ${formatVND(data.budget)}`}</span><button type="button" class="text-action" onclick="openBudgetEditor()">${data.budget == null ? 'Đặt ngân sách' : 'Điều chỉnh'}</button>`;
+  if (typeof Chart === 'undefined') {
+    container.innerHTML = `<p class="empty-copy">${escapeHtml(explanation)}</p>`;
+    return;
+  }
+  const datasets = [{ label: 'Chi ròng lũy kế', data: series.points, borderWidth: 2.5, borderColor: '#6366f1',
+    backgroundColor: '#6366f1', tension: 0, fill: false,
+    pointRadius: ctx => ctx.dataIndex === series.points.length - 1 ? 3 : 0,
+    pointHoverRadius: ctx => ctx.raw?.crossing ? 0 : 5,
+    pointBackgroundColor: ctx => data.budget != null && ctx.parsed.y > data.budget ? '#dc2626' : '#6366f1',
+    segment: { borderColor: ctx => cashflowSegmentColor(ctx, data.budget) } }];
+  if (data.budget != null) datasets.push({ label: 'Ngân sách tháng', data: [{ x: 0, y: data.budget }, { x: series.days, y: data.budget }], borderColor: '#94a3b8', borderWidth: 2, borderDash: [6, 5], pointRadius: 0, pointHitRadius: 0, fill: false });
+  cashflowChart = new Chart(document.getElementById('cashflowCanvas'), {
+    type: 'line', data: { datasets }, options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      layout: { padding: { top: 6, right: 6 } },
+      plugins: { legend: { display: false }, tooltip: {
+        filter: item => item.datasetIndex === 0 && !item.raw.crossing,
+        callbacks: { title: items => items.length ? (items[0].parsed.x === 0 ? 'Đầu tháng' : `Ngày ${items[0].parsed.x}/${financeMonth.slice(-2)}`) : '',
+          label: item => `Chi ròng: ${formatVND(item.parsed.y)}`,
+          afterLabel: item => item.parsed.x === 0 ? '' : [`Chi trong ngày: ${formatVND(item.raw.expense)}`, `Thu trong ngày: ${formatVND(item.raw.income)}`, ...(data.budget != null && item.parsed.y > data.budget ? [`Vượt ngân sách: ${formatVND(item.parsed.y - data.budget)}`] : [])] }
+      } },
+      scales: {
+        x: { type: 'linear', min: 0, max: series.days, grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 7, precision: 0, color: '#64748b', font: { size: 10 }, callback: value => value === 0 ? 'Đầu' : String(value).padStart(2, '0') } },
+        y: { min: series.minimum, max: series.maximum, border: { display: false }, grid: { color: '#f1f5f9' }, ticks: { maxTicksLimit: 5, color: '#64748b', font: { size: 10 }, callback: value => new Intl.NumberFormat('vi-VN', { notation: 'compact', maximumFractionDigits: 1 }).format(value) + ' ₫' } }
+      }
+    }
+  });
 }
 
 function renderTransactions() {
@@ -161,10 +256,12 @@ function renderTransactions() {
     const category = financeCategory(row.category_id);
     const heading = row.spent_on !== lastDay ? `<div class="transaction-day">${displayDate(row.spent_on)}</div>` : '';
     lastDay = row.spent_on;
-    return `${heading}<div class="transaction-row"><span class="transaction-symbol" style="color:${colorFor(category)}">${renderIcon(row.kind === 'income' ? 'arrow-down-left' : 'receipt')}</span><button type="button" class="transaction-main" onclick="editTransactionById(${row.id})"><strong>${escapeHtml(row.title)}</strong><span>${escapeHtml(category?.name || 'Danh mục')}${row.source_item_id ? ' · Từ kế hoạch' : row.recurring_id ? ' · Định kỳ' : ''}</span></button><span class="transaction-amount ${row.kind === 'income' ? 'income' : ''}">${row.kind === 'income' ? '+' : '−'}${formatVND(row.amount)}</span><button type="button" class="icon-button" onclick="deleteFinanceTransaction(${row.id})" aria-label="Xóa giao dịch: ${escapeHtml(row.title)}">${renderIcon('trash-2')}</button></div>`;
+    return `${heading}<div class="transaction-row"><span class="transaction-symbol" style="color:${colorFor(category)}">${renderIcon(row.kind === 'income' ? 'arrow-down-left' : 'receipt')}</span><button type="button" class="transaction-main" onclick="editTransactionById(${row.id})"><strong>${escapeHtml(row.title)}</strong><span>${escapeHtml(category?.name || 'Danh mục')}${row.source_item_id ? ' · Từ kế hoạch' : row.recurring_id ? ' · Định kỳ' : ''}</span></button><span class="transaction-amount ${row.kind === 'income' ? 'income' : ''}">${row.kind === 'income' ? '+' : '−'}${formatVND(row.amount)}</span></div>`;
   }).join('') : financeEmpty(financeCached && !financeState.overview ? 'Chưa kết nối được máy chủ. Dữ liệu sẽ hiện khi kết nối lại.' : 'Chưa có giao dịch phù hợp.');
   const total = financeState.total;
-  document.getElementById('transactionPagination').innerHTML = total ? `<span>${Math.min(financeOffset + 1, total)}–${Math.min(financeOffset + 30, total)} / ${total}</span><div><button type="button" class="icon-button" onclick="pageTransactions(-1)" aria-label="Trang giao dịch trước" ${financeOffset === 0 ? 'disabled' : ''}>${renderIcon('chevron-left')}</button><button type="button" class="icon-button" onclick="pageTransactions(1)" aria-label="Trang giao dịch sau" ${financeOffset + 30 >= total ? 'disabled' : ''}>${renderIcon('chevron-right')}</button></div>` : '';
+  const totalPages = Math.ceil(total / 30);
+  const currentPage = Math.min(Math.floor(financeOffset / 30) + 1, totalPages);
+  document.getElementById('transactionPagination').innerHTML = total ? `<span>Trang ${currentPage}/${totalPages}</span><div><button type="button" class="icon-button" onclick="pageTransactions(-1)" aria-label="Trang giao dịch trước" ${financeOffset === 0 ? 'disabled' : ''}>${renderIcon('chevron-left')}</button><button type="button" class="icon-button" onclick="pageTransactions(1)" aria-label="Trang giao dịch sau" ${financeOffset + 30 >= total ? 'disabled' : ''}>${renderIcon('chevron-right')}</button></div>` : '';
 }
 
 function categoryOptions(selected, includeAll = false) {
@@ -216,8 +313,9 @@ function openTransactionEditor(row = null, defaults = {}) {
     showToast('Hãy kết nối máy chủ và thêm danh mục trước.', true); return;
   }
   const initial = row || { client_id: financeUUID(), kind: 'expense', spent_on: localISODate(), ...defaults };
-  const body = `<div class="editor-field"><label for="entryKind">Loại giao dịch</label><select id="entryKind" name="entryKind"><option value="expense" ${initial.kind !== 'income' ? 'selected' : ''}>Khoản chi</option><option value="income" ${initial.kind === 'income' ? 'selected' : ''} ${initial.source_item_id || initial.recurring_id ? 'disabled' : ''}>Khoản thu</option></select></div>${formField('Số tiền (VNĐ)', 'entryAmount', 'number', initial.amount || '', 'min="1" max="9000000000000" step="1" required inputmode="numeric" placeholder="35.000"')}${formField('Nội dung', 'entryTitle', 'text', initial.title || '', 'required maxlength="255" placeholder="Ăn sáng"')}<div class="editor-columns"><div class="editor-field"><label for="entryCategory">Danh mục</label><select id="entryCategory" name="entryCategory" required>${categoryOptions(initial.category_id)}</select></div>${formField('Ngày', 'entryDate', 'date', initial.spent_on, 'required')}</div><details class="plan-options"><summary>Ghi chú</summary><label for="entryNote" class="sr-only">Ghi chú giao dịch</label><textarea id="entryNote" name="entryNote" maxlength="2000" rows="2">${escapeHtml(initial.note || '')}</textarea></details>${initial.source_item_id ? '<p class="muted small">Khoản này liên kết với hạng mục trong kế hoạch.</p>' : ''}`;
-  openFinanceEditor(row ? 'Sửa giao dịch' : initial.source_item_id ? 'Ghi chi từ kế hoạch' : 'Thêm giao dịch', body, async form => {
+  initial.category_id ??= financeState.categories.find(c => c.name === 'Khác' && !c.archived)?.id || financeState.categories.find(c => !c.archived)?.id;
+  const body = `<div class="editor-field"><label for="entryKind">Loại giao dịch</label><select id="entryKind" name="entryKind"><option value="expense" ${initial.kind !== 'income' ? 'selected' : ''}>Khoản chi</option><option value="income" ${initial.kind === 'income' ? 'selected' : ''} ${initial.source_item_id || initial.recurring_id ? 'disabled' : ''}>Khoản thu</option></select></div>${formField('Số tiền (VNĐ)', 'entryAmount', 'number', initial.amount || '', 'min="1" max="9000000000000" step="1" required inputmode="numeric" placeholder="35000"')}${formField('Nội dung', 'entryTitle', 'text', initial.title || '', 'required maxlength="255" placeholder="Ăn sáng"')}<div class="editor-field"><label for="entryCategory">Danh mục</label><select id="entryCategory" name="entryCategory" required>${categoryOptions(initial.category_id)}</select></div><details class="entry-more" ${row && (row.note || row.spent_on !== localISODate()) ? 'open' : ''}><summary>Thêm chi tiết</summary><div class="entry-more-fields">${formField('Ngày giao dịch', 'entryDate', 'date', initial.spent_on, 'required')}<div class="editor-field"><label for="entryNote">Ghi chú (tùy chọn)</label><textarea id="entryNote" name="entryNote" maxlength="2000" rows="2">${escapeHtml(initial.note || '')}</textarea></div>${row ? `<button id="deleteTransactionButton" type="button" class="text-action danger-action" onclick="deleteTransactionFromEditor(${row.id})">Xóa giao dịch này</button>` : ''}</div></details>${initial.source_item_id ? '<p class="muted small">Khoản này liên kết với hạng mục trong kế hoạch.</p>' : ''}`;
+  openFinanceEditor(row ? 'Sửa giao dịch' : initial.source_item_id ? 'Ghi chi từ kế hoạch' : 'Ghi thu/chi', body, async form => {
     const payload = { client_id: initial.client_id, amount: Number(form.get('entryAmount')), title: form.get('entryTitle').trim(),
       kind: form.get('entryKind'), category_id: Number(form.get('entryCategory')), spent_on: form.get('entryDate'),
       note: form.get('entryNote') || '', source_item_id: initial.source_item_id || null };
@@ -242,21 +340,6 @@ function openTransactionEditor(row = null, defaults = {}) {
 async function editTransactionById(id) {
   try { openTransactionEditor(await financeApi(`/transactions/${id}`)); } catch (error) { showToast(error.message, true); }
 }
-function handleQuickEntry(event) {
-  event.preventDefault();
-  const value = document.getElementById('quickExpense').value.trim();
-  const match = value.match(/^(\d+(?:[.,]\d+)*)\s*(k|nghìn|ngàn|tr|triệu)?\s+(.+)$/iu);
-  const defaults = {};
-  if (match) {
-    const unit = (match[2] || '').toLowerCase();
-    defaults.amount = Math.round(Number(unit ? match[1].replace(',', '.') : match[1].replace(/[.,]/g, '')) * (['k', 'nghìn', 'ngàn'].includes(unit) ? 1000 : unit ? 1000000 : 1));
-    defaults.title = match[3];
-  } else if (value) defaults.title = value;
-  const text = (defaults.title || '').toLowerCase();
-  const category = /xăng|grab|taxi|xe buýt/.test(text) ? 'Di chuyển' : /đi chợ|rau|thịt|trứng|gạo/.test(text) ? 'Đi chợ' : /ăn|cơm|phở|bún|cà phê|cafe|trà sữa/.test(text) ? 'Ăn uống' : 'Khác';
-  defaults.category_id = financeState.categories.find(c => c.name === category && !c.archived)?.id;
-  openTransactionEditor(null, defaults);
-}
 
 function actionToast(message, label, action) {
   const toast = document.createElement('div'); toast.className = 'action-toast';
@@ -277,7 +360,20 @@ async function deleteFinanceTransaction(id) {
       await financeApi(`/transactions/${id}/restore`, { method: 'POST' });
       await Promise.all([refreshFinance(), loadPlansFromDB()]);
     });
-  } catch (error) { showToast(error.message, true); }
+    return true;
+  } catch (error) { showToast(error.message, true); return false; }
+}
+
+async function deleteTransactionFromEditor(id) {
+  const modal = document.getElementById('financeModal');
+  if (modal.dataset.busy === 'true') return;
+  const button = document.getElementById('deleteTransactionButton');
+  modal.dataset.busy = 'true'; button.disabled = true;
+  try {
+    const success = await deleteFinanceTransaction(id);
+    modal.dataset.busy = 'false';
+    if (success) hideModal('financeModal');
+  } finally { modal.dataset.busy = 'false'; button.disabled = false; }
 }
 
 function openBudgetEditor(categoryId = null) {
@@ -385,15 +481,37 @@ function openPreferencesEditor() {
   });
 }
 
+// Only the verified original owner may import the pre-account offline queue.
+window.migrateLegacyExpenseOutbox = () => {
+  if (window.smartspendUserId !== 'legacy-owner') return;
+  try {
+    const oldKey = 'smartspend-outbox-v1';
+    const legacy = JSON.parse(localStorage.getItem(oldKey) || '[]');
+    if (Array.isArray(legacy)) {
+      for (const row of legacy) if (row?.client_id) localStorage.setItem(`${expenseOutboxKey()}:${row.client_id}`, JSON.stringify(row));
+      localStorage.removeItem(oldKey);
+    }
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith(`${oldKey}:`)) continue;
+      const row = JSON.parse(localStorage.getItem(key));
+      if (row?.client_id) {
+        localStorage.setItem(`${expenseOutboxKey()}:${row.client_id}`, JSON.stringify(row));
+        localStorage.removeItem(key);
+      }
+    }
+  } catch (_) { showToast('Chưa chuyển được khoản chờ đồng bộ cũ. Dữ liệu vẫn được giữ trên thiết bị.', true); }
+};
+
 function readExpenseOutbox() {
+  if (!window.smartspendUserId) return [];
   try {
     const result = new Map();
     // Read the earlier array format as well, without dropping any pending rows.
-    const legacy = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]');
+    const legacy = JSON.parse(localStorage.getItem(expenseOutboxKey()) || '[]');
     if (Array.isArray(legacy)) legacy.forEach(row => result.set(row.client_id, row));
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (!key?.startsWith(`${OUTBOX_KEY}:`)) continue;
+      if (!key?.startsWith(`${expenseOutboxKey()}:`)) continue;
       const row = JSON.parse(localStorage.getItem(key));
       if (row?.client_id) result.set(row.client_id, row);
     }
@@ -404,20 +522,20 @@ function readExpenseOutbox() {
 function hasPendingExpenses() { return readExpenseOutbox().length > 0; }
 function queueExpense(payload) {
   // One storage key per UUID prevents two tabs from overwriting each other's queue.
-  try { localStorage.setItem(`${OUTBOX_KEY}:${payload.client_id}`, JSON.stringify(payload)); }
+  try { localStorage.setItem(`${expenseOutboxKey()}:${payload.client_id}`, JSON.stringify(payload)); }
   catch (_) { throw new Error('Thiết bị không lưu được khoản chờ đồng bộ. Hãy kết nối lại trước khi ghi chi.'); }
 }
 function removePendingExpense(id) {
-  localStorage.removeItem(`${OUTBOX_KEY}:${id}`);
-  const legacy = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]');
-  if (Array.isArray(legacy) && legacy.some(row => row.client_id === id)) localStorage.setItem(OUTBOX_KEY, JSON.stringify(legacy.filter(row => row.client_id !== id)));
+  localStorage.removeItem(`${expenseOutboxKey()}:${id}`);
+  const legacy = JSON.parse(localStorage.getItem(expenseOutboxKey()) || '[]');
+  if (Array.isArray(legacy) && legacy.some(row => row.client_id === id)) localStorage.setItem(expenseOutboxKey(), JSON.stringify(legacy.filter(row => row.client_id !== id)));
 }
 function renderPendingExpenses() {
   const rows = readExpenseOutbox();
   document.getElementById('pendingTransactions').innerHTML = rows.length ? `<div class="pending-list"><div class="section-toolbar"><strong>${rows.length} giao dịch chờ đồng bộ</strong><button type="button" class="text-action" onclick="syncExpenseOutbox()" ${financeSyncing ? 'disabled' : ''}>${financeSyncing ? 'Đang đồng bộ…' : 'Đồng bộ'}</button></div>${rows.map(r => `<div class="pending-row"><span>${escapeHtml(r.title)}<small>${displayDate(r.spent_on)}</small></span><strong>${formatVND(r.amount)}</strong><button type="button" class="icon-button" ${financeSyncing ? 'disabled' : ''} data-cancel-pending="${escapeHtml(r.client_id)}" aria-label="Bỏ khoản đang chờ: ${escapeHtml(r.title)}">${renderIcon('x')}</button></div>`).join('')}<p class="small muted">Chưa cộng vào báo cáo tháng cho đến khi máy chủ xác nhận.</p></div>` : '';
 }
 async function syncExpenseOutbox() {
-  if (financeSyncing) return;
+  if (financeSyncing || !window.smartspendUserId) return;
   financeSyncing = true; renderPendingExpenses();
   let failed = null;
   try {

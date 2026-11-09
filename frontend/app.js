@@ -1,6 +1,6 @@
 // Local Lucide SVG sprite; no icon runtime or icon font required.
 function renderIcon(name) {
-  return `<svg class="icon" aria-hidden="true"><use href="/icons.svg#${name}"></use></svg>`;
+  return `<svg class="icon" aria-hidden="true"><use href="/icons.svg?v=12#${name}"></use></svg>`;
 }
 
 // =====================================================================
@@ -12,6 +12,11 @@ let currentPlan = null;
 let historyFilter = "all"; // "all" | "meal" | "hangout"
 let financeChart = null;
 let currentChartType = "doughnut"; // "doughnut" | "bar"
+let canEditServerConfig = false;
+let plansHaveMore = false, plansLoading = false, plansEpoch = 0;
+const PLAN_PAGE_SIZE = 30;
+const pendingPlanItems = new Set();
+let planWriteQueue = Promise.resolve();
 
 // Định dạng tiền tệ chuẩn Việt Nam (VD: 500.000 ₫)
 function formatVND(amount) {
@@ -68,6 +73,13 @@ async function loadConfigStatus() {
     const res = await fetch("/api/config");
     if (!res.ok) return;
     const data = await res.json();
+
+    canEditServerConfig = data.can_edit_config === true;
+    document.querySelectorAll('[data-server-config]').forEach(control => control.classList.toggle('hidden', !canEditServerConfig));
+    if (!canEditServerConfig) {
+      if (!document.getElementById('settingsModal').classList.contains('hidden')) hideModal('settingsModal');
+      return;
+    }
 
     renderDbStatusBadge(data.db_status);
 
@@ -151,8 +163,9 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-function openSettingsModal() {
-  loadConfigStatus();
+async function openSettingsModal() {
+  await loadConfigStatus();
+  if (!canEditServerConfig) return;
   showModal("settingsModal");
 }
 
@@ -208,15 +221,28 @@ async function handleSaveConfig(event) {
 // =====================================================================
 async function openIphoneModal() {
   showModal("iphoneModal");
+  const qrImage = document.getElementById("iphoneQrImg");
+  qrImage.removeAttribute("src");
+  qrImage.classList.add("hidden");
   try {
     const res = await fetch("/api/network-info");
+    if (!res.ok) throw new Error('Không lấy được địa chỉ app');
     const data = await res.json();
     const lanUrl = data.app_url || data.lan_url || window.location.origin;
 
     document.getElementById("iphoneLanUrlCode").textContent = lanUrl;
-    document.getElementById("iphoneQrImg").src = `/api/network-qr?t=${Date.now()}`;
     document.getElementById("iphoneConnectionMessage").textContent = data.public_url ? "Quét mã QR bằng Camera iPhone. Địa chỉ HTTPS này dùng được qua Wi-Fi hoặc 4G/5G." : "Địa chỉ này chỉ dùng cùng Wi-Fi. Cần cấu hình hosting để mở app khi máy tính tắt.";
     document.getElementById("iphoneConnectionNote").textContent = data.public_url ? "Mở bằng Safari, đăng nhập và chọn Chia sẻ → Thêm vào Màn hình chính." : "Hosting chưa được kết nối. App trên máy tính vẫn cần mở khi dùng địa chỉ LAN.";
+    // Image requests cannot attach the account header used by private APIs.
+    // Fetch through the authenticated wrapper, then render the SVG locally.
+    try {
+      const qr = await fetch('/api/network-qr', { cache: 'no-store' });
+      if (!qr.ok) throw new Error('Không tải được QR');
+      qrImage.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(await qr.text());
+      qrImage.classList.remove('hidden');
+    } catch (_) {
+      document.getElementById('iphoneConnectionNote').textContent = 'Chưa tải được mã QR. Bạn vẫn có thể sao chép đường link và mở bằng Safari trên iPhone.';
+    }
   } catch (err) {
     const fallbackUrl = window.location.origin;
     document.getElementById("iphoneLanUrlCode").textContent = fallbackUrl;
@@ -336,10 +362,10 @@ async function handleGeneratePlan(event) {
 
     const data = await res.json();
     if (!res.ok) {
-      if (res.status === 400 && (data.detail || "").toLowerCase().includes("api key")) {
+      if (res.status === 400 && typeof data.detail === "string" && data.detail.toLowerCase().includes("api key")) {
         openSettingsModal();
       }
-      throw new Error(data.detail || "Lỗi khi gọi AI tạo kế hoạch");
+      throw new Error(typeof data.detail === "string" ? data.detail : "Dữ liệu chưa hợp lệ. Hãy kiểm tra độ dài và nội dung biểu mẫu.");
     }
 
     document.getElementById("planTitleInput").value = "";
@@ -356,18 +382,37 @@ async function handleGeneratePlan(event) {
 // =====================================================================
 // 4. LỊCH SỬ KẾ HOẠCH TỪ DATABASE (/api/plans)
 // =====================================================================
-async function loadPlansFromDB(targetPlanId = null) {
+async function loadPlansFromDB(targetPlanId = null, append = false) {
+  if (append && (plansLoading || !plansHaveMore)) return;
+  const epoch = ++plansEpoch;
+  plansLoading = true;
+  const moreButton = document.getElementById('morePlansButton');
+  if (moreButton) moreButton.disabled = true;
   try {
-    const res = await fetch("/api/plans");
+    const params = new URLSearchParams({ limit: PLAN_PAGE_SIZE });
+    if (historyFilter !== 'all') params.set('plan_type', historyFilter);
+    if (append && allPlans.length) params.set('before_id', allPlans.at(-1).id);
+    const res = await fetch(`/api/plans?${params}`);
     if (!res.ok) throw new Error("Không tải được kế hoạch");
-    allPlans = await res.json();
+    const page = await res.json();
+    if (epoch !== plansEpoch) return;
+    plansHaveMore = page.length === PLAN_PAGE_SIZE;
+    allPlans = append ? [...allPlans, ...page.filter(p => !allPlans.some(old => old.id === p.id))] : page;
 
     renderPlansHistoryList();
+    if (append) return;
 
     if (targetPlanId) {
       const target = allPlans.find((p) => p.id === targetPlanId);
       if (target) {
         selectActivePlan(target);
+        return;
+      }
+      const detail = await fetch(`/api/plans/${targetPlanId}`);
+      if (detail.ok) {
+        const targetDetail = await detail.json();
+        if (epoch !== plansEpoch) return;
+        selectActivePlan(targetDetail);
         return;
       }
     }
@@ -386,9 +431,15 @@ async function loadPlansFromDB(targetPlanId = null) {
       clearDashboardToEmpty();
     }
   } catch (err) {
+    if (epoch !== plansEpoch) return;
     console.error("Không thể tải lịch sử kế hoạch:", err);
     document.getElementById("plansHistoryList").innerHTML =
       `<p class="text-xs text-slate-500 py-4">Không tải được kế hoạch. Bấm Làm mới để thử lại.</p>`;
+  } finally {
+    if (epoch === plansEpoch) {
+      plansLoading = false;
+      if (moreButton) { moreButton.disabled = false; moreButton.classList.toggle('hidden', !plansHaveMore); }
+    }
   }
 }
 
@@ -410,7 +461,7 @@ function setHistoryFilter(filterType) {
   document.getElementById("historyFilterHangout").className =
     filterType === "hangout" ? activeCls : normalCls;
 
-  renderPlansHistoryList();
+  loadPlansFromDB();
 }
 
 function renderPlansHistoryList() {
@@ -752,10 +803,10 @@ function renderSingleItemCard(item, sectionType) {
         <input
           type="checkbox"
           aria-label="Hoàn thành: ${escapeHtml(item.name)}"
-          ${isDone ? "checked" : ""}
+          ${isDone ? "checked" : ""} ${pendingPlanItems.has(item.id) ? 'disabled' : ''}
           onchange="toggleItemCompleted(${item.id}, this.checked)"
           class="mt-1 w-5 h-5 rounded accent-indigo-500 cursor-pointer flex-shrink-0"
-          title="Đánh dấu hoàn thành; thanh toán được ghi riêng"
+          title="Tích để ghi chi theo giá của mục; bỏ tích để hủy khoản chi tự động"
         />
         <div class="flex-1 min-w-0">
           <div class="flex flex-wrap items-center gap-2 mb-1">
@@ -785,11 +836,12 @@ function renderSingleItemCard(item, sectionType) {
             min="0"
             max="2000000000"
             step="1000"
+            ${pendingPlanItems.has(item.id) ? 'disabled' : ''}
             onchange="updateItemPrice(${item.id}, this.value)"
             class="w-24 bg-transparent text-right text-xs sm:text-sm font-semibold ${
               item.price > 0 ? "text-slate-700" : "text-slate-500"
             } outline-none"
-            title="Sửa giá dự kiến. Giao dịch đã ghi chi được sửa riêng."
+            title="Sửa giá của mục và khoản chi do ô hoàn thành tự tạo. Khoản nhập thủ công được sửa riêng."
           />
           <span class="text-[11px] font-semibold text-slate-500">₫</span>
         </div>
@@ -804,53 +856,62 @@ function renderSingleItemCard(item, sectionType) {
 // 8. API PATCH ITEM & DELETE PLAN (ĐỒNG BỘ TỨC THÌ VỚI POSTGRESQL)
 // =====================================================================
 async function toggleItemCompleted(itemId, isCompleted) {
-  try {
-    const res = await fetch(`/api/items/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_completed: isCompleted }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || "Không thể cập nhật trạng thái");
-    }
-
-    if (data.plan) {
-      applyUpdatedPlanFromServer(data.plan);
-    }
-  } catch (err) {
-    showToast(err.message, true);
-  }
+  return savePlanItem(itemId, { is_completed: isCompleted });
 }
 
 async function updateItemPrice(itemId, rawValue) {
-  const newPrice = Math.max(0, parseInt(rawValue, 10) || 0);
-  try {
-    const res = await fetch(`/api/items/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ price: newPrice }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || "Không thể cập nhật giá tiền");
-    }
-
-    if (data.plan) {
-      applyUpdatedPlanFromServer(data.plan);
-      showToast(`Đã cập nhật chi phí: ${formatVND(newPrice)}`);
-    }
-  } catch (err) {
-    showToast(err.message, true);
+  const newPrice = Number(rawValue);
+  if (!Number.isInteger(newPrice) || newPrice < 0 || newPrice > 2000000000) {
+    renderInteractiveChecklist(currentPlan);
+    showToast('Giá phải là số nguyên từ 0 đến 2 tỷ đồng.', true);
+    return;
   }
+  return savePlanItem(itemId, { price: newPrice });
+}
+
+function savePlanItem(itemId, payload) {
+  if (pendingPlanItems.has(itemId)) return planWriteQueue;
+  pendingPlanItems.add(itemId);
+  document.querySelectorAll(`#item-card-${itemId} input, #item-card-${itemId} button`).forEach(c => c.disabled = true);
+  const operation = async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    try {
+      const res = await fetch(`/api/items/${itemId}`, {
+        method: "PATCH",
+        signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(typeof data.detail === 'string' ? data.detail : "Không thể lưu hạng mục");
+      }
+
+      if (data.plan) {
+        applyUpdatedPlanFromServer(data.plan);
+        await window.refreshFinance?.();
+      }
+    } catch (err) {
+      showToast(err.name === 'AbortError' ? 'Chưa xác nhận được thay đổi. Hãy kết nối và làm mới kế hoạch.' : err.message, true);
+      if (currentPlan) renderInteractiveChecklist(currentPlan);
+    } finally {
+      clearTimeout(timer);
+      pendingPlanItems.delete(itemId);
+      document.querySelectorAll(`#item-card-${itemId} input, #item-card-${itemId} button`).forEach(c => c.disabled = false);
+    }
+  };
+  planWriteQueue = planWriteQueue.then(operation, operation);
+  return planWriteQueue;
 }
 
 function applyUpdatedPlanFromServer(updatedPlan) {
-  currentPlan = updatedPlan;
   const idx = allPlans.findIndex((p) => p.id === updatedPlan.id);
   if (idx !== -1) {
     allPlans[idx] = updatedPlan;
   }
+  if (currentPlan && currentPlan.id !== updatedPlan.id) { renderPlansHistoryList(); return; }
+  currentPlan = updatedPlan;
   renderPlansHistoryList();
   renderStatCardsAndProgress(updatedPlan);
   renderFinanceChart(updatedPlan);

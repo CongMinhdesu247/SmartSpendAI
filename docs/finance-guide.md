@@ -21,13 +21,16 @@ Màn hình tháng có tìm theo nội dung (hỗ trợ không dấu), lọc danh
 
 ## Kế hoạch và thanh toán
 
-- Checkbox chỉ đánh dấu hoàn thành.
-- Ô giá trong checklist là **giá dự kiến**.
+- Tích checkbox ở hạng mục có giá sẽ tự ghi một khoản chi vào ngày hiện tại (giờ Việt Nam), cập nhật mức đã chi và biểu đồ kế hoạch, đồng thời cập nhật báo cáo tháng tương ứng. Mục giá 0 chỉ đánh dấu hoàn thành.
+- Bỏ tích hủy khoản chi do checkbox tự tạo; tích lại khôi phục cùng giao dịch, không cộng trùng.
+- Ô giá là giá dự kiến; khi mục đã được ghi chi tự động bằng checkbox, sửa ô giá cũng cập nhật số tiền của khoản chi tự động.
 - **Ghi chi** mở giao dịch thực tế, cho phép sửa số tiền và ngày thanh toán.
-- **Đã ghi chi** mở lại giao dịch liên kết. Sửa giá dự kiến không đổi số tiền đã thanh toán.
+- **Đã ghi chi** mở lại giao dịch liên kết. Khoản nhập thủ công bằng **Ghi chi** không bị sửa hoặc xóa khi đổi checkbox hay giá dự kiến.
 - Một hạng mục có một giao dịch liên kết; các lần gửi lại không tạo khoản chi trùng.
 - Sao chép kế hoạch tạo bản mới chưa hoàn thành, chưa thanh toán.
 - Xóa kế hoạch giữ các giao dịch thực tế trong sổ chi tiêu. Hoàn tác khôi phục liên kết với giao dịch, không ghi tiền lần nữa.
+- Các dấu tích có từ bản cũ không tự sinh giao dịch khi mở app. Để ghi chi cho mục cũ chưa có giao dịch, bỏ tích rồi tích lại hoặc dùng **Ghi chi**.
+- Lịch sử tải 30 kế hoạch mỗi trang; dùng **Tải thêm kế hoạch** để xem tiếp. Bộ lọc thực đơn/đi chơi áp dụng trên máy chủ.
 
 Đổi một mục bằng AI chỉ áp dụng cho mục chưa có thanh toán. Khi đổi thực đơn, app không tự cập nhật các nguyên liệu khác: cần kiểm tra lại giỏ đi chợ. Giá AI là ước tính, không phải giá bán được xác minh trực tiếp.
 
@@ -45,7 +48,7 @@ Chỉ hỗ trợ xếp hàng **giao dịch mới nhập thủ công**. Sửa gia
 
 Tải lại app ngoại tuyến đầy đủ cần Service Worker: dùng HTTPS hoặc localhost. Safari qua địa chỉ LAN HTTP không cung cấp đầy đủ khả năng này; cần giữ tab đang mở để tiếp tục nhập khi mất kết nối. Xóa dữ liệu trình duyệt có thể xóa các khoản chưa đồng bộ.
 
-PWA không tự biến máy tính thành máy chủ trên Internet. Đồng bộ qua LAN vẫn cần máy tính chạy app và cùng mạng. Để dùng khi máy tính tắt, xem [hosting và đăng nhập cloud](iphone-cloud.md). Bản cloud có mật khẩu một chủ sở hữu, chưa tách dữ liệu nhiều người.
+PWA không tự biến máy tính thành máy chủ trên Internet. Đồng bộ qua LAN vẫn cần máy tính chạy app và cùng mạng. Để dùng khi máy tính tắt, xem [hosting và đăng nhập cloud](iphone-cloud.md). Bản cloud hỗ trợ [tài khoản và sổ riêng](private-accounts.md).
 
 ## Dữ liệu cũ và nâng cấp
 
@@ -75,3 +78,8 @@ python tests/serve_preview.py
 ```
 
 Lệnh này tạo backend thử nghiệm tại `http://127.0.0.1:8767`, với dữ liệu minh họa và cơ sở dữ liệu tạm riêng. Không đọc/sửa cấu hình hoặc dữ liệu thật. API AI trong kiểm tra tự động dùng phản hồi mô phỏng; chưa xác minh chất lượng đề xuất qua Gemini thật. Schema PostgreSQL được kiểm tra biên dịch, chưa chạy tích hợp trên một máy chủ PostgreSQL.
+# Biểu đồ thu chi trong tháng
+
+Đường biểu diễn chi ròng lũy kế từ đầu tháng: tổng chi trừ tổng thu, chốt cuối mỗi ngày. Ghi chi làm đường tăng, nhận tiền làm đường giảm; tiền thu lớn hơn tiền chi có thể đưa đường xuống dưới 0. Các ngày chưa tới không được dự đoán. Nếu bạn đã ghi giao dịch có ngày trong tương lai, biểu đồ vẫn thể hiện dữ liệu đã ghi đó.
+
+Ngân sách toàn tháng là đường ngang nét đứt. Chỉ phần đường cao hơn ngân sách được tô đỏ; khi tiền thu kéo chi ròng xuống dưới hạn mức, đoạn đường mới trở về màu tím. Ngân sách từng danh mục không thay thế đường giới hạn toàn tháng. Nếu chưa đặt ngân sách, bấm **Đặt ngân sách** dưới biểu đồ để bật cảnh báo. Thẻ **Đã chi** và **Còn trong ngân sách** phía trên vẫn thống kê tổng chi thực tế, chưa trừ thu; biểu đồ thể hiện chi ròng và có nhãn riêng.
