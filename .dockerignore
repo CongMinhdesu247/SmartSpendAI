@@ -1,6 +1,7 @@
 *
 !Dockerfile
-!requirements-server.txt
+!requirements/
+!requirements/server.txt
 !backend/
 !backend/**
 !frontend/

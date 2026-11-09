@@ -15,23 +15,19 @@ Muốn dùng iPhone qua 4G/5G khi máy tính tắt: xem [cấu hình hosting và
 
 ```text
 SmartSpendAI/
-├── backend/
-│   ├── __init__.py
-│   ├── database.py       # Kết nối thông minh Supabase PostgreSQL & Fallback SQLite + quản lý config.json
-│   ├── models.py         # SQLAlchemy ORM: Bảng Plan (plans) & PlanItem (plan_items)
-│   ├── ai_service.py     # Lõi Gemini AI + Fallback Model + Bảng neo giá thực tế VN (VN_PRICE_ANCHOR)
-│   └── api_server.py     # FastAPI RESTful Server + Phục vụ tĩnh Frontend PWA
-├── frontend/
-│   ├── index.html        # Giao diện Dashboard & Modal Cài đặt / QR iPhone PWA
-│   ├── style.css         # Giao diện Responsive (Desktop 2 cột & iPhone Mobile)
-│   ├── app.js            # Logic kết nối REST API, tick giỏ đi chợ & sửa giá trực tiếp
-│   ├── manifest.json     # Cấu hình Web App Manifest cho PWA
-│   └── sw.js             # Service Worker hỗ trợ cài đặt PWA
-├── main.py               # Điểm khởi chạy ứng dụng (tự động mở trình duyệt & hiển thị IP LAN)
-├── requirements.txt      # Danh sách thư viện Python
-├── run_app.bat           # File chạy nhanh ứng dụng trên Windows
-└── build_exe.bat         # File đóng gói ứng dụng thành SmartSpendPro.exe độc lập
+├── backend/       # API và nghiệp vụ
+├── frontend/      # Giao diện web/PWA
+├── launchers/     # Khởi chạy desktop và trình duyệt
+├── scripts/cloud/ # Công cụ cấu hình, đóng gói và chuyển dữ liệu cloud
+├── requirements/  # Thư viện desktop, server và phát triển
+├── config/        # Cấu hình Tailwind và Prettier
+├── tests/         # Kiểm thử và preview
+├── docs/          # Hướng dẫn
+├── run_app.bat    # Bấm để chạy ứng dụng
+└── build_exe.bat  # Bấm để đóng gói EXE
 ```
+
+Xem [bản đồ mã nguồn và quy tắc định dạng](docs/source-layout.md) để tìm từng chức năng và các lệnh kiểm tra.
 
 ---
 
@@ -40,13 +36,13 @@ SmartSpendAI/
 ### Bước 1: Cài đặt thư viện
 Mở Terminal / PowerShell tại thư mục dự án và chạy:
 ```powershell
-pip install -r requirements.txt
+pip install -r requirements/desktop.txt
 ```
 
 ### Bước 2: Khởi động ứng dụng
 Nhấn đúp vào **`run_app.bat`** hoặc chạy lệnh:
 ```powershell
-python main.py
+python -m launchers.browser
 ```
 Trình duyệt sẽ tự động mở địa chỉ `http://127.0.0.1:8000`.
 
@@ -74,7 +70,7 @@ Nhấn đúp vào file **`build_exe.bat`** (hoặc chạy `./build_exe.bat` tron
 dist\SmartSpendPro.exe
 ```
 
-Cài các phiên bản đã cố định bằng `python -m pip install -r requirements.txt` trước khi build. Script dừng và báo thất bại nếu thiếu thư viện hoặc PyInstaller lỗi. Chạy tự động bằng `build_exe.bat --no-pause`.
+Cài các phiên bản đã cố định bằng `python -m pip install -r requirements/desktop.txt` trước khi build. Script dừng và báo thất bại nếu thiếu thư viện hoặc PyInstaller lỗi. Chạy tự động bằng `build_exe.bat --no-pause`.
 
 Desktop kiểm tra HTTP `/healthz` trước khi mở cửa sổ. Lỗi khởi động được lưu tại `%LOCALAPPDATA%\SmartSpendPro\logs\desktop.log`. Có thể kiểm tra khởi động không mở cửa sổ bằng `SmartSpendPro.exe --check-startup` (mã thoát 0 khi thành công).
 
@@ -82,7 +78,7 @@ Tích hoàn thành hạng mục có giá sẽ tự ghi chi và cập nhật bi�
 
 ## Kiểm thử
 
-`python -m pip install -r requirements-dev.txt`, sau đó chạy `python -m unittest discover -s tests -v` và các file `tests/test_*.cjs` bằng Node. GitHub Actions chạy cả PostgreSQL riêng để kiểm tra migration/RLS, các bài JavaScript và build Windows. Cấu hình PostgreSQL thử nghiệm cục bộ được mô tả trong [sổ riêng](docs/private-accounts.md).
+`python -m pip install -r requirements/dev.txt`, sau đó chạy `python -m unittest discover -s tests -v` và các file `tests/test_*.cjs` bằng Node. GitHub Actions chạy cả PostgreSQL riêng để kiểm tra migration/RLS, các bài JavaScript và build Windows. Cấu hình PostgreSQL thử nghiệm cục bộ được mô tả trong [sổ riêng](docs/private-accounts.md).
 
 AI giới hạn 10 yêu cầu mỗi phút cho mỗi tài khoản và 2 yêu cầu đồng thời trên một server. Mỗi model chờ tối đa 20 giây, chỉ đổi sang model dự phòng khi nhận lỗi 404; không đổi model khi hết quota hoặc lỗi xác thực. Khi đặt `GEMINI_MODEL`, app chỉ gọi model đã chọn.
 

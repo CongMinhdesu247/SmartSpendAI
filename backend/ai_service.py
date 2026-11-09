@@ -1,20 +1,29 @@
 import json
 import os
 import logging
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 
 from google import genai
 from google.genai import types
-from pydantic import BaseModel, Field
 
+from backend.schemas.ai import (
+    AIPlanItemSchema,
+    AIPlanOutput,
+)
 from backend.database import load_config
+
 logger = logging.getLogger(__name__)
 
 
 def make_client(api_key):
     # Milliseconds. One provider attempt per model; at most three models below.
-    return genai.Client(api_key=api_key, http_options=types.HttpOptions(
-        timeout=20000, retry_options=types.HttpRetryOptions(attempts=1)))
+    return genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(
+            timeout=20000, retry_options=types.HttpRetryOptions(attempts=1)
+        ),
+    )
+
 
 # =====================================================================
 # BẢNG NEO GIÁ THỰC TẾ TẠI VIỆT NAM (VN_PRICE_ANCHOR)
@@ -57,74 +66,6 @@ VN_PRICE_ANCHOR = """
 
 
 # =====================================================================
-# PYDANTIC SCHEMAS ĐỊNH DẠNG ĐẦU RA CHUẨN TỪ GEMINI
-# =====================================================================
-class AIPlanItemSchema(BaseModel):
-    category: Literal["grocery", "daily_menu", "activity"] = Field(
-        description=(
-            "Phân loại mục: "
-            "'grocery' (nguyên liệu trong giỏ đi chợ gộp), "
-            "'daily_menu' (thực đơn Sáng-Trưa-Tối của từng ngày), "
-            "hoặc 'activity' (hoạt động trong lịch trình đi chơi)."
-        )
-    )
-    time_or_day: str = Field(
-        max_length=120,
-        description=(
-            "Thời điểm hoặc phân nhóm. "
-            "Với 'grocery': ghi nhóm nguyên liệu (VD: 'Đạm & Thịt cá', 'Rau củ & Trái cây', 'Tinh bột & Gia vị'). "
-            "Với 'daily_menu': ghi 'Ngày 1', 'Ngày 2'... "
-            "Với 'activity': ghi khung giờ cụ thể (VD: '17:30 - 18:30', 'Dự phòng')."
-        )
-    )
-    name: str = Field(
-        min_length=1, max_length=255,
-        description=(
-            "Tên thực phẩm kèm định lượng rõ ràng (VD: 'Thịt ba rọi heo (500g)') "
-            "HOẶC tóm tắt món Sáng - Trưa - Tối của ngày đó "
-            "HOẶC tên địa điểm/hoạt động đi chơi."
-        )
-    )
-    details: str = Field(
-        max_length=5000,
-        description=(
-            "Chi tiết hữu ích: "
-            "Với 'grocery': cách chọn mua tươi ngon, chia phần & bảo quản tủ lạnh cho những ngày nào. "
-            "Với 'daily_menu': chi tiết món Sáng, Trưa, Tối và cách tận dụng nguyên liệu từ giỏ đi chợ gộp. "
-            "Với 'activity': địa chỉ gợi ý thực tế tại khu vực, món nên gọi và mẹo trải nghiệm."
-        )
-    )
-    price: int = Field(
-        ge=0,
-        le=2000000000,
-        description=(
-            "Chi phí ước tính bằng VNĐ (số nguyên dương, làm tròn nghìn đồng). "
-            "LƯU Ý QUAN TRỌNG: Với kế hoạch 'meal', toàn bộ tiền mua nguyên liệu đã tính ở các mục 'grocery', "
-            "nên các mục 'daily_menu' PHẢI để price = 0 (hoặc chỉ ghi chi phí phát sinh nhỏ không có trong giỏ đi chợ) "
-            "để tránh cộng trùng lặp ngân sách."
-        ),
-    )
-
-
-class AIPlanOutput(BaseModel):
-    title: str = Field(
-        min_length=1, max_length=255,
-        description="Tiêu đề kế hoạch ngắn gọn, hấp dẫn (VD: 'Thực đơn 7 ngày 500k đủ chất' hoặc 'Hẹn hò cuối tuần 300k tại Hà Nội')."
-    )
-    estimated_cost: int = Field(
-        ge=0,
-        description="Tổng chi phí dự tính của toàn bộ kế hoạch (VNĐ), phải nhỏ hơn hoặc bằng ngân sách total_budget.",
-    )
-    advice: str = Field(
-        description="Lời khuyên thực tế từ chuyên gia tài chính: mẹo đi chợ/sơ chế/bảo quản hoặc mẹo săn ưu đãi, phương án dự phòng khi thời tiết xấu."
-    )
-    items: List[AIPlanItemSchema] = Field(
-        min_length=1, max_length=200,
-        description="Danh sách đầy đủ các hạng mục của kế hoạch."
-    )
-
-
-# =====================================================================
 # HÀM GỌI GEMINI VỚI CƠ CHẾ TỰ ĐỘNG FALLBACK MODEL
 # =====================================================================
 PREFERRED_MODELS = [
@@ -162,19 +103,25 @@ def _call_gemini_with_fallback(
             return _parse_ai_response(response)
         except Exception as err:
             code = getattr(err, "code", None)
-            logger.warning("AI request failed (model=%s, type=%s, status=%s)",
-                model_name if model_name in PREFERRED_MODELS else "configured", type(err).__name__, code if isinstance(code, int) else "unknown")
+            logger.warning(
+                "AI request failed (model=%s, type=%s, status=%s)",
+                model_name if model_name in PREFERRED_MODELS else "configured",
+                type(err).__name__,
+                code if isinstance(code, int) else "unknown",
+            )
             # Only a missing model warrants fallback. Retrying quota, auth,
             # invalid JSON or a timeout across models multiplies cost and delay.
             if code != 404:
-                raise RuntimeError("AI hiện chưa khả dụng. Vui lòng thử lại sau hoặc báo người quản trị.") from None
+                raise RuntimeError(
+                    "AI hiện chưa khả dụng. Vui lòng thử lại sau hoặc báo người quản trị."
+                ) from None
 
     if configured_model:
-        raise RuntimeError("AI hiện chưa khả dụng. Vui lòng thử lại sau hoặc báo người quản trị.") from None
+        raise RuntimeError(
+            "AI hiện chưa khả dụng. Vui lòng thử lại sau hoặc báo người quản trị."
+        ) from None
 
-    raise RuntimeError(
-        "AI hiện chưa khả dụng. Vui lòng thử lại sau hoặc báo người quản trị."
-    )
+    raise RuntimeError("AI hiện chưa khả dụng. Vui lòng thử lại sau hoặc báo người quản trị.")
 
 
 def _parse_ai_response(response: Any) -> AIPlanOutput:
@@ -205,7 +152,7 @@ def _parse_ai_response(response: Any) -> AIPlanOutput:
 def generate_smart_plan(
     plan_type: str,
     total_budget: int,
-    region: str = "TP. Hồ Chí Minh",
+    region: str = "Hà Nội",
     days_or_people: str = "7 ngày cho 1-2 người",
     preferences: str = "",
     api_key: Optional[str] = None,
@@ -279,7 +226,8 @@ YÊU CẦU CẤU TRÚC `items` CHO KẾ HOẠCH "hangout":
 
     with make_client(effective_key) as client:
         ai_output: AIPlanOutput = _call_gemini_with_fallback(
-            client=client, prompt=user_prompt, system_instruction=system_instruction)
+            client=client, prompt=user_prompt, system_instruction=system_instruction
+        )
 
     # Chuẩn hóa và kiểm tra tổng chi phí để đảm bảo tính chính xác toán học
     cleaned_items: List[Dict[str, Any]] = []
@@ -312,7 +260,9 @@ YÊU CẦU CẤU TRÚC `items` CHO KẾ HOẠCH "hangout":
         calculated_total = sum(i["price"] for i in cleaned_items)
 
     if calculated_total > budget_int:
-        raise ValueError("Ngân sách chưa đủ cho số hạng mục được đề xuất. Hãy tăng ngân sách hoặc giảm thời lượng.")
+        raise ValueError(
+            "Ngân sách chưa đủ cho số hạng mục được đề xuất. Hãy tăng ngân sách hoặc giảm thời lượng."
+        )
 
     return {
         "title": ai_output.title.strip(),
@@ -330,7 +280,9 @@ def suggest_replacement(context: Dict[str, Any]) -> Dict[str, Any]:
     """Replace exactly one unpaid item, keeping its category and budget cap."""
     key = load_config().get("gemini_api_key", "").strip()
     if not key:
-        raise ValueError("AI chưa được người quản trị cấu hình. Bạn vẫn có thể dùng sổ chi tiêu bình thường.")
+        raise ValueError(
+            "AI chưa được người quản trị cấu hình. Bạn vẫn có thể dùng sổ chi tiêu bình thường."
+        )
     with make_client(key) as client:
         output = _call_gemini_with_fallback(
             client,
@@ -338,12 +290,16 @@ def suggest_replacement(context: Dict[str, Any]) -> Dict[str, Any]:
             "Giữ category và khung thời gian. Không tự thay đổi nguyên liệu của các mục khác. "
             "Giá là ước tính, phải <= budget; với daily_menu ưu tiên giá 0 vì nguyên liệu đã tính riêng. "
             + json.dumps(context, ensure_ascii=False),
-            "Bạn là trợ lý lập kế hoạch sinh hoạt tại Việt Nam. Trả về JSON đúng schema, không emoji. " + VN_PRICE_ANCHOR,
+            "Bạn là trợ lý lập kế hoạch sinh hoạt tại Việt Nam. Trả về JSON đúng schema, không emoji. "
+            + VN_PRICE_ANCHOR,
         )
     if len(output.items) != 1:
         raise ValueError("AI chưa trả về đúng một phương án. Hãy thử lại.")
     item = output.items[0]
-    if item.category != context["category"] or item.price > context["budget"] or not item.name.strip():
+    if (
+        item.category != context["category"]
+        or item.price > context["budget"]
+        or not item.name.strip()
+    ):
         raise ValueError("Phương án AI chưa phù hợp ngân sách. Hãy thử lại.")
     return {"name": item.name.strip()[:255], "details": item.details.strip(), "price": item.price}
-

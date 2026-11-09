@@ -26,14 +26,13 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m pip install -r requirements/dev.txt
+      - run: python -m black --check .
       - run: python -m unittest discover -s tests -v
       - run: npm ci
+      - run: npm run format:check
       - run: npm run build:css
-      - run: node tests/test_private_cache.cjs
-      - run: node tests/test_iphone_qr.cjs
-      - run: node tests/test_cashflow_chart.cjs
-      - run: node tests/test_plan_sync.cjs
+      - run: npm run test:ui
   windows-build:
     runs-on: windows-latest
     steps:
@@ -41,5 +40,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - run: python -m pip install -r requirements.txt
+      - run: python -m pip install -r requirements/desktop.txt
       - run: .\build_exe.bat --no-pause

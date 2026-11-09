@@ -1,4 +1,5 @@
 """Keep checkbox-created expenses idempotent without changing manual payments."""
+
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -21,7 +22,9 @@ def sync_completion_payment(db, item, payload):
         return
     # Price edits only follow an existing automatic payment. Old checkmarks are
     # never imported into the ledger merely by opening or renaming a plan.
-    requested = payload.is_completed is True or (payload.price is not None and automatic and item.is_completed)
+    requested = payload.is_completed is True or (
+        payload.price is not None and automatic and item.is_completed
+    )
     if not requested:
         return
     if payment is not None and not automatic:
@@ -41,9 +44,16 @@ def sync_completion_payment(db, item, payload):
             raise HTTPException(409, "Hãy thêm danh mục chi tiêu trước khi đánh dấu đã chi.")
         # Persist the origin in the existing opaque key. It survives archive
         # restore and cannot collide when SQLite reuses a deleted item ID.
-        payment = Transaction(client_id=AUTO_PREFIX + str(uuid4()), source_item_id=item.id,
-            title=item.name, amount=item.price, kind="expense", spent_on=today(),
-            category_id=category.id, note="Ghi từ ô hoàn thành kế hoạch")
+        payment = Transaction(
+            client_id=AUTO_PREFIX + str(uuid4()),
+            source_item_id=item.id,
+            title=item.name,
+            amount=item.price,
+            kind="expense",
+            spent_on=today(),
+            category_id=category.id,
+            note="Ghi từ ô hoàn thành kế hoạch",
+        )
         db.add(payment)
     elif payment.deleted_at is not None:
         payment.spent_on = today()

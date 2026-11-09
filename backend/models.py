@@ -49,19 +49,23 @@ class Plan(LedgerOwned, Base):
             "total_budget": self.total_budget,
             "estimated_cost": self.estimated_cost,
             "actual_spent": sum(item.paid_amount for item in self.items),
-            "unrecorded_legacy_spent": (self.actual_spent or 0) if not any(item.payments for item in self.items) else 0,
+            "unrecorded_legacy_spent": (
+                (self.actual_spent or 0) if not any(item.payments for item in self.items) else 0
+            ),
             "region": self.region,
             "advice": self.advice or "",
-            "created_at": self.created_at.replace(tzinfo=self.created_at.tzinfo or timezone.utc).isoformat() if self.created_at else None,
+            "created_at": (
+                self.created_at.replace(tzinfo=self.created_at.tzinfo or timezone.utc).isoformat()
+                if self.created_at
+                else None
+            ),
         }
         if include_items:
             data["items"] = [item.to_dict() for item in (self.items or [])]
         else:
             data["items_count"] = len(self.items) if self.items is not None else 0
             data["completed_count"] = (
-                sum(1 for item in self.items if item.is_completed)
-                if self.items is not None
-                else 0
+                sum(1 for item in self.items if item.is_completed) if self.items is not None else 0
             )
         return data
 
@@ -113,8 +117,12 @@ class PlanItem(LedgerOwned, Base):
             "details": self.details or "",
             "price": self.price,
             "is_completed": bool(self.is_completed),
-            "payment": next(({
-                "id": p.id, "amount": p.amount, "spent_on": p.spent_on.isoformat()
-            } for p in self.payments if p.deleted_at is None), None),
+            "payment": next(
+                (
+                    {"id": p.id, "amount": p.amount, "spent_on": p.spent_on.isoformat()}
+                    for p in self.payments
+                    if p.deleted_at is None
+                ),
+                None,
+            ),
         }
-

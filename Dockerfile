@@ -1,8 +1,8 @@
 FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 SMARTSPEND_CLOUD=1
 WORKDIR /app
-COPY requirements-server.txt ./
-RUN pip install --no-cache-dir -r requirements-server.txt \
+COPY requirements/server.txt ./requirements/server.txt
+RUN pip install --no-cache-dir -r requirements/server.txt \
     && useradd --create-home --uid 10001 smartspend
 COPY --chown=smartspend:smartspend backend ./backend
 COPY --chown=smartspend:smartspend frontend ./frontend

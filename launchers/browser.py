@@ -28,10 +28,9 @@ def open_browser_when_ready() -> None:
 
 
 if __name__ == "__main__":
-    cloud_url = normalize_public_url(load_config().get('cloud_url', ''))
+    cloud_url = normalize_public_url(load_config().get("cloud_url", ""))
     if cloud_url:
         webbrowser.open(cloud_url)
         raise SystemExit(0)
     threading.Thread(target=open_browser_when_ready, daemon=True).start()
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
-

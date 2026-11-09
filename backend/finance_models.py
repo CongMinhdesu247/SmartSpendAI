@@ -1,7 +1,22 @@
 """Additive finance schema. Money is stored as whole VND, never floating point."""
+
 import unicodedata
-from sqlalchemy import (BigInteger, Boolean, CheckConstraint, Column, Date, DateTime,
-                        DDL, ForeignKey, Index, Integer, String, Text, UniqueConstraint, event)
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Column,
+    Date,
+    DateTime,
+    DDL,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    event,
+)
 from backend.database import Base
 from backend.tenancy import LedgerOwned, OWNER_ID
 from backend.models import utc_now
@@ -33,9 +48,11 @@ class RecurringBill(LedgerOwned, Base):
     frequency = Column(String(12), nullable=False, default="monthly")
     anchor_day = Column(Integer, nullable=False)
     archived = Column(Boolean, nullable=False, default=False)
-    __table_args__ = (CheckConstraint("amount > 0 AND amount <= 9000000000000"),
-                      CheckConstraint("frequency IN ('weekly','monthly','yearly')"),
-                      CheckConstraint("anchor_day BETWEEN 1 AND 31"))
+    __table_args__ = (
+        CheckConstraint("amount > 0 AND amount <= 9000000000000"),
+        CheckConstraint("frequency IN ('weekly','monthly','yearly')"),
+        CheckConstraint("anchor_day BETWEEN 1 AND 31"),
+    )
 
 
 class Transaction(LedgerOwned, Base):
@@ -54,11 +71,13 @@ class Transaction(LedgerOwned, Base):
     occurrence_on = Column(Date, nullable=True)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
-    __table_args__ = (CheckConstraint("amount > 0 AND amount <= 9000000000000"),
-                      CheckConstraint("kind IN ('expense','income')"),
-                      UniqueConstraint("recurring_id", "occurrence_on"),
-                      UniqueConstraint("user_id", "client_id"),
-                      Index("ix_spend_transaction_month", "spent_on", "id"))
+    __table_args__ = (
+        CheckConstraint("amount > 0 AND amount <= 9000000000000"),
+        CheckConstraint("kind IN ('expense','income')"),
+        UniqueConstraint("recurring_id", "occurrence_on"),
+        UniqueConstraint("user_id", "client_id"),
+        Index("ix_spend_transaction_month", "spent_on", "id"),
+    )
 
 
 class Budget(LedgerOwned, Base):
@@ -88,7 +107,10 @@ class Contribution(LedgerOwned, Base):
     goal_id = Column(ID, ForeignKey("spend_goals.id"), nullable=False, index=True)
     amount = Column(BigInteger, nullable=False)
     saved_on = Column(Date, nullable=False)
-    __table_args__ = (UniqueConstraint("user_id", "client_id"), CheckConstraint("amount > 0 AND amount <= 9000000000000"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "client_id"),
+        CheckConstraint("amount > 0 AND amount <= 9000000000000"),
+    )
 
 
 class Preference(LedgerOwned, Base):
@@ -104,7 +126,9 @@ class PlanArchive(LedgerOwned, Base):
     snapshot = Column(Text, nullable=False)
     deleted_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
     restored = Column(Boolean, nullable=False, default=False)
-    restored_plan_id = Column(Integer, ForeignKey("plans.id", ondelete="SET NULL"), nullable=True, index=True)
+    restored_plan_id = Column(
+        Integer, ForeignKey("plans.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
 
 class Account(Base):
@@ -133,7 +157,20 @@ def update_search_title(_mapper, _connection, transaction):
 
 # Personal app: database owner accesses these through FastAPI. No direct browser
 # Data API grants/policies; RLS denies anon/authenticated access to new tables.
-for model in (Category, RecurringBill, Transaction, Budget, Goal, Contribution, Preference, PlanArchive, AccessSession, Account):
-    event.listen(model.__table__, "after_create", DDL(
-        'ALTER TABLE %(fullname)s ENABLE ROW LEVEL SECURITY'
-    ).execute_if(dialect="postgresql"))
+for model in (
+    Category,
+    RecurringBill,
+    Transaction,
+    Budget,
+    Goal,
+    Contribution,
+    Preference,
+    PlanArchive,
+    AccessSession,
+    Account,
+):
+    event.listen(
+        model.__table__,
+        "after_create",
+        DDL("ALTER TABLE %(fullname)s ENABLE ROW LEVEL SECURITY").execute_if(dialect="postgresql"),
+    )

@@ -1,4 +1,5 @@
 """Bounded in-process AI admission control for the single-worker deployment."""
+
 import threading
 import time
 from collections import OrderedDict, deque
@@ -23,9 +24,15 @@ class AILimiter:
             while len(self.clients) > 4096:
                 self.clients.popitem(last=False)
             if len(attempts) >= self.per_minute:
-                raise HTTPException(429, "Bạn đã gọi AI nhiều lần. Hãy đợi một phút rồi thử lại.", headers={"Retry-After": "60"})
+                raise HTTPException(
+                    429,
+                    "Bạn đã gọi AI nhiều lần. Hãy đợi một phút rồi thử lại.",
+                    headers={"Retry-After": "60"},
+                )
             if not self.slots.acquire(blocking=False):
-                raise HTTPException(429, "AI đang bận. Hãy thử lại sau ít giây.", headers={"Retry-After": "5"})
+                raise HTTPException(
+                    429, "AI đang bận. Hãy thử lại sau ít giây.", headers={"Retry-After": "5"}
+                )
             attempts.append(now)
 
 

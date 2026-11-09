@@ -10,7 +10,7 @@ App cần backend chạy trên hosting và một địa chỉ HTTPS. Database đ
 - API dữ liệu yêu cầu đăng nhập. API không trả về khóa Gemini/chuỗi kết nối thô. Cấu hình cloud được quản lý bằng biến môi trường.
 - Cloud yêu cầu PostgreSQL và không chuyển sang SQLite tạm khi lỗi kết nối.
 - QR được tạo trong app, không gửi địa chỉ app sang dịch vụ QR bên ngoài.
-- `configure_cloud.py` để desktop mở cùng app online với iPhone.
+- `scripts/cloud/configure.py` để desktop mở cùng app online với iPhone.
 
 ## Triển khai
 
@@ -33,14 +33,14 @@ Nếu triển khai thủ công:
 Sau khi có URL thật, chạy:
 
 ```powershell
-python configure_cloud.py
+python -m scripts.cloud.configure
 ```
 
 Dán URL HTTPS khi được hỏi, rồi mở lại `run_app.bat`. Desktop sẽ mở app online, không khởi chạy một backend local riêng. Mật khẩu đăng nhập giống trên iPhone. Chưa chạy bước này nếu chưa có URL triển khai thật.
 
 ## Dữ liệu và sao lưu
 
-`migrate_cloud_data.py` mặc định chỉ kiểm tra. `--apply` sao lưu SQLite bằng snapshot nhất quán rồi sao chép sang database cloud **trống**. Giữ nguyên ID, checkbox và giao dịch liên kết; không xóa SQLite gốc. Dừng khi đích có dữ liệu khác, không tự trộn hoặc ghi đè. Báo cáo nằm ở `output/deployment/migration-report.json`.
+`scripts/cloud/migrate_data.py` mặc định chỉ kiểm tra. `--apply` sao lưu SQLite bằng snapshot nhất quán rồi sao chép sang database cloud **trống**. Giữ nguyên ID, checkbox và giao dịch liên kết; không xóa SQLite gốc. Dừng khi đích có dữ liệu khác, không tự trộn hoặc ghi đè. Báo cáo nằm ở `output/deployment/migration-report.json`.
 
 Trong lần cấu hình này, kết nối PostgreSQL đã được kiểm tra và dữ liệu cũ đã được sao lưu/chuyển, đối chiếu số bản ghi. Bảng dữ liệu mới và bảng kế hoạch bật RLS; backend dùng vai trò chủ sở hữu qua kết nối trực tiếp.
 

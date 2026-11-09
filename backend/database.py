@@ -31,12 +31,14 @@ DEFAULT_SQLITE_URL = f"sqlite:///{(BASE_DIR / 'smartspend_local.db').as_posix()}
 
 class Base(DeclarativeBase):
     """Lớp cơ sở cho tất cả các model SQLAlchemy."""
+
     pass
 
 
 @event.listens_for(Engine, "connect")
 def enable_sqlite_foreign_keys(connection, _record):
     import sqlite3
+
     if isinstance(connection, sqlite3.Connection):
         connection.execute("PRAGMA foreign_keys=ON")
 
@@ -62,7 +64,8 @@ def load_config() -> Dict[str, Any]:
     default_cfg = {
         "gemini_api_key": os.environ.get("GEMINI_API_KEY", ""),
         "database_url": os.environ.get("DATABASE_URL", ""),
-        "cloud_url": os.environ.get("SMARTSPEND_PUBLIC_URL", "") or os.environ.get("RENDER_EXTERNAL_URL", ""),
+        "cloud_url": os.environ.get("SMARTSPEND_PUBLIC_URL", "")
+        or os.environ.get("RENDER_EXTERNAL_URL", ""),
     }
     if is_cloud_mode():
         return default_cfg  # Hosted secrets are environment-only; never config.json.
@@ -111,7 +114,7 @@ def normalize_database_url(raw_url: str) -> str:
         url = "postgresql://" + url[len("postgres://") :]
     if url.startswith("postgresql://"):
         # SQLAlchemy 2.1 defaults to psycopg3. This project installs psycopg2.
-        url = "postgresql+psycopg2://" + url[len("postgresql://"):]
+        url = "postgresql+psycopg2://" + url[len("postgresql://") :]
     if url.startswith("postgresql+"):
         try:
             parsed = make_url(url)
@@ -139,18 +142,28 @@ def init_db_connection(custom_url: Optional[str] = None, config_to_save=None) ->
         normalized_url = normalize_database_url(raw_url)
         postgres = normalized_url.startswith(("postgresql://", "postgresql+"))
         if (normalized_url and not postgres) or (is_cloud_mode() and not postgres):
-            raise DatabaseConnectionError("Địa chỉ database phải là PostgreSQL. Để trống để chọn SQLite trên máy tính.")
+            raise DatabaseConnectionError(
+                "Địa chỉ database phải là PostgreSQL. Để trống để chọn SQLite trên máy tính."
+            )
         candidate = None
         try:
             if postgres:
-                candidate = create_engine(normalized_url, pool_pre_ping=True, pool_size=5,
-                    max_overflow=10, pool_recycle=300, connect_args={"connect_timeout": 10})
+                candidate = create_engine(
+                    normalized_url,
+                    pool_pre_ping=True,
+                    pool_size=5,
+                    max_overflow=10,
+                    pool_recycle=300,
+                    connect_args={"connect_timeout": 10},
+                )
                 from backend.account_migration import require_ready
+
                 # Desktop must satisfy exactly the same schema/role contract.
                 require_ready(candidate)
             else:
                 candidate = _create_sqlite_engine()
             from backend.finance_api import initialize_finance
+
             initialize_finance(candidate)
             if config_to_save is not None:
                 save_config(config_to_save)
@@ -160,7 +173,7 @@ def init_db_connection(custom_url: Optional[str] = None, config_to_save=None) ->
             logger.error("Database connection/setup failed (%s)", type(exc).__name__)
             raise DatabaseConnectionError(
                 "Chưa kết nối được database hoặc chưa nâng cấp schema/quyền. "
-                "Kiểm tra kết nối và hướng dẫn migrate_private_ledgers.py. "
+                "Kiểm tra kết nối và hướng dẫn python -m scripts.cloud.migrate_ledgers. "
                 "Cấu hình và nguồn dữ liệu hiện tại được giữ nguyên."
             ) from None
         previous = engine
@@ -169,8 +182,13 @@ def init_db_connection(custom_url: Optional[str] = None, config_to_save=None) ->
         current_db_mode = "postgresql" if postgres else "sqlite"
         if previous is not None and previous is not candidate:
             previous.dispose()
-        return {"status": "connected" if postgres else "local", "mode": current_db_mode,
-            "message": "Đã kết nối PostgreSQL." if postgres else "Đang lưu dữ liệu SQLite trên máy tính."}
+        return {
+            "status": "connected" if postgres else "local",
+            "mode": current_db_mode,
+            "message": (
+                "Đã kết nối PostgreSQL." if postgres else "Đang lưu dữ liệu SQLite trên máy tính."
+            ),
+        }
 
 
 def _init_sqlite_fallback() -> None:
@@ -190,16 +208,27 @@ def _create_sqlite_engine() -> Engine:
     )
 
     from backend import models, finance_models  # noqa: F401
+
     # Keep a consistent SQLite snapshot before the first additive finance upgrade.
     from sqlalchemy import inspect
+
     local_path = Path(local_engine.url.database)
-    backup_path = local_path.with_name(local_path.stem + '.before_finance_v1.db')
+    backup_path = local_path.with_name(local_path.stem + ".before_finance_v1.db")
     existing_tables = inspect(local_engine).get_table_names()
-    if 'plans' in existing_tables and 'spend_transactions' not in existing_tables and not backup_path.exists():
+    if (
+        "plans" in existing_tables
+        and "spend_transactions" not in existing_tables
+        and not backup_path.exists()
+    ):
         import sqlite3
-        with closing(sqlite3.connect(local_path)) as source, closing(sqlite3.connect(backup_path)) as target:
+
+        with (
+            closing(sqlite3.connect(local_path)) as source,
+            closing(sqlite3.connect(backup_path)) as target,
+        ):
             source.backup(target)
     from backend.sqlite_upgrade import upgrade_local
+
     try:
         upgrade_local(local_engine)
         Base.metadata.create_all(bind=local_engine)
@@ -242,4 +271,3 @@ def get_db_status() -> Dict[str, Any]:
         "is_cloud_postgres": current_db_mode == "postgresql",
         "configured_url_masked": masked_url,
     }
-

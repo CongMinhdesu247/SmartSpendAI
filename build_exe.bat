@@ -7,18 +7,23 @@ title Build SmartSpend Pro Desktop (.exe)
 echo ===============================================================
 echo   DANG DONG GOI SMARTSPEND PRO THANH FILE .EXE DOC LAP...
 echo ===============================================================
+rem Kiem tra thu vien can thiet.
 python -c "import PyInstaller, fastapi, uvicorn, sqlalchemy, psycopg2, google.genai, webview, pwdlib, qrcode" >nul 2>&1
 if errorlevel 1 (
-  echo Loi: Chua du thu vien. Chay: python -m pip install -r requirements.txt
+  echo Loi: Chua du thu vien. Chay: python -m pip install -r requirements/desktop.txt
   goto :failed
 )
+
+rem Dong goi backend va tai nguyen frontend.
 python -m PyInstaller --noconfirm --onefile --windowed --clean ^
+  --paths "%CD%" ^
+  --specpath "build" ^
   --name "SmartSpendPro" ^
-  --add-data "frontend;frontend" ^
+  --add-data "%CD%\frontend;frontend" ^
   --hidden-import "sqlalchemy.dialects.postgresql" ^
   --hidden-import "sqlalchemy.dialects.sqlite" ^
   --hidden-import "psycopg2" ^
-  desktop_launcher.py
+  launchers/desktop.py
 if errorlevel 1 goto :failed
 if not exist "dist\SmartSpendPro.exe" goto :failed
 

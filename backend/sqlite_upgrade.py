@@ -1,4 +1,5 @@
 """Transactional local-ledger upgrade, with a consistent SQLite backup first."""
+
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -10,6 +11,7 @@ from backend.tenancy import OWNER_ID
 
 def upgrade_local(engine):
     from backend.account_migration import ledger_tables
+
     inspector = inspect(engine)
     existing = set(inspector.get_table_names())
     names = [name for name in ledger_tables() + ["spend_access_sessions"] if name in existing]
@@ -20,7 +22,10 @@ def upgrade_local(engine):
         path = Path(source_path)
         backup = path.with_name(path.stem + ".before_private_ledgers.db")
         if not backup.exists():
-            with closing(sqlite3.connect(path)) as source, closing(sqlite3.connect(backup)) as target:
+            with (
+                closing(sqlite3.connect(path)) as source,
+                closing(sqlite3.connect(backup)) as target,
+            ):
                 source.backup(target)
     # Temporary tables retain FK references to final table names. Disable FK checks
     # only for the atomic table replacement, then verify before the commit.
@@ -39,7 +44,13 @@ def upgrade_local(engine):
             previous = {r[1] for r in cursor.execute(f'PRAGMA table_info("{name}")').fetchall()}
             columns = [c.name for c in table.columns]
             selected = [f'"{c}"' if c in previous else "'" + OWNER_ID + "'" for c in columns]
-            cursor.execute(f'INSERT INTO "{temporary.name}" (' + ','.join(f'"{c}"' for c in columns) + ') SELECT ' + ','.join(selected) + f' FROM "{name}"')
+            cursor.execute(
+                f'INSERT INTO "{temporary.name}" ('
+                + ",".join(f'"{c}"' for c in columns)
+                + ") SELECT "
+                + ",".join(selected)
+                + f' FROM "{name}"'
+            )
         for name in names:
             cursor.execute(f'DROP TABLE "{name}"')
         for name in names:

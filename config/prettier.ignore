@@ -1,0 +1,11 @@
+../node_modules/
+../build/
+../dist/
+../output/
+../.git/
+../.playwright-cli/
+../frontend/vendor/
+../frontend/tailwind.css
+../frontend/icons.svg
+../frontend/*.svg
+../package-lock.json

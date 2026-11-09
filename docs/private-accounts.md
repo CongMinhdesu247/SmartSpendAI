@@ -20,8 +20,8 @@ Cache và hàng chờ đồng bộ có khóa theo ID người dùng. Chỉ `chus
 
 Không chạy thay đổi schema thật trong quá trình khởi động app. Chuẩn bị và duyệt bước chuyển dữ liệu trước khi phát hành code mới.
 
-1. Chạy `python migrate_private_ledgers.py` để xem số bản ghi; lệnh mặc định chỉ đọc. `.env.cloud` không được commit hoặc in ra.
-2. Sau khi được đồng ý áp dụng vào cloud, chạy `python migrate_private_ledgers.py --apply`. Công cụ dùng `pg_dump` sao lưu schema `public` vào `output/deployment/*.dump` trước. Nếu sao lưu lỗi, dừng; không chạy migration. PostgreSQL nâng cấp trong một transaction, có khóa ngăn hai lần chạy cùng lúc và giới hạn đợi khóa 10 giây.
+1. Chạy `python -m scripts.cloud.migrate_ledgers` để xem số bản ghi; lệnh mặc định chỉ đọc. `.env.cloud` không được commit hoặc in ra.
+2. Sau khi được đồng ý áp dụng vào cloud, chạy `python -m scripts.cloud.migrate_ledgers --apply`. Công cụ dùng `pg_dump` sao lưu schema `public` vào `output/deployment/*.dump` trước. Nếu sao lưu lỗi, dừng; không chạy migration. PostgreSQL nâng cấp trong một transaction, có khóa ngăn hai lần chạy cùng lúc và giới hạn đợi khóa 10 giây.
 3. Kiểm tra báo cáo số bản ghi trước/sau. Migration gắn dữ liệu cũ cho `chuso`, tạo vai trò hạn chế, chính sách RLS và khóa ngoại kiểm tra chủ sở hữu; xóa các phiên cũ để yêu cầu đăng nhập lại. Migration chạy lại không thay đổi dữ liệu.
 4. Push code đã kiểm thử lên repository SmartSpendAI, deploy dịch vụ Render hiện tại trên gói **Free**, không tạo database hoặc dịch vụ mới. Trong lúc đổi cấu trúc và phát hành có thể gián đoạn ngắn; không tạo tài khoản thành viên cho đến khi bản mới đã Live.
 5. Kiểm tra `/healthz`, đăng nhập `chuso`, dữ liệu cũ và quyền truy cập. Các bài kiểm thử tạo tài khoản/giao dịch chỉ chạy trên database thử nghiệm.

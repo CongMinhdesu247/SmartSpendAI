@@ -21,6 +21,8 @@ Màn hình tháng có tìm theo nội dung (hỗ trợ không dấu), lọc danh
 
 ## Kế hoạch và thanh toán
 
+Địa điểm mặc định của kế hoạch AI là **Hà Nội**; có thể chọn thành phố khác trước khi tạo. Các ô nhập tiền tự tách hàng nghìn bằng dấu chấm: nhập `1000000` sẽ hiển thị `1.000.000`. Có thể dán số đã định dạng; khi lưu, ứng dụng gửi số nguyên VNĐ.
+
 - Tích checkbox ở hạng mục có giá sẽ tự ghi một khoản chi vào ngày hiện tại (giờ Việt Nam), cập nhật mức đã chi và biểu đồ kế hoạch, đồng thời cập nhật báo cáo tháng tương ứng. Mục giá 0 chỉ đánh dấu hoàn thành.
 - Bỏ tích hủy khoản chi do checkbox tự tạo; tích lại khôi phục cùng giao dịch, không cộng trùng.
 - Ô giá là giá dự kiến; khi mục đã được ghi chi tự động bằng checkbox, sửa ô giá cũng cập nhật số tiền của khoản chi tự động.
@@ -65,7 +67,7 @@ Schema mới có tính bổ sung và lặp lại an toàn theo quy trình `metad
 ## Phát triển và kiểm tra
 
 ```powershell
-pip install -r requirements-dev.txt
+pip install -r requirements/dev.txt
 python -m unittest discover -s tests -v
 npm ci
 npm run build:css

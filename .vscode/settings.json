@@ -1,0 +1,23 @@
+{
+  "prettier.configPath": "config/prettier.json",
+  "prettier.ignorePath": "config/prettier.ignore",
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "node_modules": true,
+    "build": true,
+    "dist": true,
+    "output": true,
+    ".playwright-cli": true,
+    ".env.cloud": true,
+    "config.json": true,
+    "smartspend_local*.db": true,
+    "smartspend_local*.db-*": true,
+    "*.spec": true
+  },
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "package.json": "package-lock.json",
+    "Dockerfile": ".dockerignore, render.yaml"
+  }
+}

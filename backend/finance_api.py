@@ -1,27 +1,58 @@
 """Personal spending ledger, budgets, bills and savings. No AI needed for CRUD."""
+
 import calendar
 from datetime import date, datetime, timedelta, timezone
-from typing import Annotated, Literal, Optional
-from uuid import UUID
+from typing import Literal, Optional
 from uuid import uuid5, NAMESPACE_URL
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend import database, models
-from backend.finance_models import Budget, Category, Contribution, Goal, Preference, RecurringBill, Transaction, normalize_search
+from backend.schemas.finance import (
+    MONEY_MAX,
+    Named,
+    CategoryInput,
+    TransactionInput,
+    BudgetInput,
+    EditTransactionInput,
+    BillInput,
+    BillPayment,
+    GoalInput,
+    ContributionInput,
+    PreferencesInput,
+)
+from backend.finance_models import (
+    Budget,
+    Category,
+    Contribution,
+    Goal,
+    Preference,
+    RecurringBill,
+    Transaction,
+    normalize_search,
+)
 from backend.tenancy import OWNER_ID
 
 router = APIRouter(prefix="/api/finance", tags=["Finance"])
-MONEY_MAX = 9_000_000_000_000
-DEFAULT_CATEGORIES = [("Ăn uống", "orange"), ("Đi chợ", "green"), ("Đi chơi", "violet"),
-                      ("Di chuyển", "sky"), ("Nhà ở", "indigo"), ("Mua sắm", "pink"),
-                      ("Sức khỏe", "teal"), ("Học tập", "blue"), ("Khác", "slate")]
+DEFAULT_CATEGORIES = [
+    ("Ăn uống", "orange"),
+    ("Đi chợ", "green"),
+    ("Đi chơi", "violet"),
+    ("Di chuyển", "sky"),
+    ("Nhà ở", "indigo"),
+    ("Mua sắm", "pink"),
+    ("Sức khỏe", "teal"),
+    ("Học tập", "blue"),
+    ("Khác", "slate"),
+]
 
 
+# =====================================================================
+# NGÀY THÁNG VÀ DỮ LIỆU BAN ĐẦU
+# =====================================================================
 def today():
     return datetime.now(timezone(timedelta(hours=7))).date()
 
@@ -30,89 +61,27 @@ def initialize_finance(engine, user_id=OWNER_ID):
     """Seed once without modifying any existing plans, prices or completion flags."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
     insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
     with Session(engine) as db, db.begin():
         if db.get(Preference, (user_id, "seeded")):
             return
         for name, color in DEFAULT_CATEGORIES:
-            db.execute(insert(Category).values(user_id=user_id, name=name, color=color, archived=False).on_conflict_do_nothing(index_elements=["user_id", "name"]))
-        db.execute(insert(Preference).values(user_id=user_id, key="seeded", value="1").on_conflict_do_nothing(index_elements=["user_id", "key"]))
+            db.execute(
+                insert(Category)
+                .values(user_id=user_id, name=name, color=color, archived=False)
+                .on_conflict_do_nothing(index_elements=["user_id", "name"])
+            )
+        db.execute(
+            insert(Preference)
+            .values(user_id=user_id, key="seeded", value="1")
+            .on_conflict_do_nothing(index_elements=["user_id", "key"])
+        )
 
 
-class Named(BaseModel):
-    name: str = Field(min_length=1, max_length=160)
-
-    @field_validator("name")
-    @classmethod
-    def trim_name(cls, value):
-        if not value.strip():
-            raise ValueError("Tên không được để trống")
-        return value.strip()
-
-
-class CategoryInput(Named):
-    name: str = Field(min_length=1, max_length=80)
-    color: Literal["orange", "green", "violet", "sky", "indigo", "pink", "teal", "blue", "slate"] = "indigo"
-
-
-class TransactionInput(BaseModel):
-    client_id: UUID
-    title: str = Field(min_length=1, max_length=255)
-    amount: int = Field(gt=0, le=MONEY_MAX, strict=True)
-    kind: Literal["expense", "income"] = "expense"
-    spent_on: date
-    category_id: int = Field(gt=0)
-    note: str = Field(default="", max_length=2000)
-    source_item_id: Optional[int] = Field(default=None, gt=0)
-
-    @field_validator("title")
-    @classmethod
-    def trim_title(cls, value):
-        if not value.strip():
-            raise ValueError("Nội dung không được để trống")
-        return value.strip()
-
-
-class BudgetInput(BaseModel):
-    amount: int = Field(ge=0, le=MONEY_MAX, strict=True)
-    category_id: Optional[int] = Field(default=None, gt=0)
-
-
-class EditTransactionInput(TransactionInput):
-    # Server-created checklist payments have an opaque origin key. New manual
-    # transactions still accept UUIDs only, so clients cannot claim this origin.
-    client_id: UUID | Annotated[str, Field(pattern=r"^plan-completion:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")]
-
-
-class BillInput(Named):
-    amount: int = Field(gt=0, le=MONEY_MAX, strict=True)
-    category_id: int = Field(gt=0)
-    next_due: date
-    frequency: Literal["weekly", "monthly", "yearly"] = "monthly"
-
-
-class BillPayment(BaseModel):
-    due_on: date
-    spent_on: date
-
-
-class GoalInput(Named):
-    target: int = Field(gt=0, le=MONEY_MAX, strict=True)
-    deadline: Optional[date] = None
-
-
-class ContributionInput(BaseModel):
-    client_id: UUID
-    amount: int = Field(gt=0, le=MONEY_MAX, strict=True)
-    saved_on: date
-
-
-class PreferencesInput(BaseModel):
-    tastes: str = Field(default="", max_length=2000)
-    avoid: str = Field(default="", max_length=2000)
-    people: str = Field(default="2 người", max_length=80)
-
-
+# =====================================================================
+# HÀM DÙNG CHUNG CHO CÁC ENDPOINT
+# =====================================================================
 def found(db, model, key):
     obj = db.get(model, key)
     if obj is None:
@@ -128,10 +97,19 @@ def valid_category(db, key, allow_archived=False):
 
 
 def transaction_dict(row):
-    return {"id": row.id, "client_id": row.client_id, "title": row.title, "amount": row.amount,
-            "kind": row.kind, "spent_on": row.spent_on.isoformat(), "category_id": row.category_id,
-            "note": row.note, "source_item_id": row.source_item_id, "recurring_id": row.recurring_id,
-            "deleted": row.deleted_at is not None}
+    return {
+        "id": row.id,
+        "client_id": row.client_id,
+        "title": row.title,
+        "amount": row.amount,
+        "kind": row.kind,
+        "spent_on": row.spent_on.isoformat(),
+        "category_id": row.category_id,
+        "note": row.note,
+        "source_item_id": row.source_item_id,
+        "recurring_id": row.recurring_id,
+        "deleted": row.deleted_at is not None,
+    }
 
 
 def commit(db):
@@ -156,10 +134,15 @@ def month_range(value):
     return start, end
 
 
+# =====================================================================
+# DANH MỤC
+# =====================================================================
 @router.get("/categories")
 def categories(db: Session = Depends(database.get_db)):
-    return [{"id": c.id, "name": c.name, "color": c.color, "archived": c.archived}
-            for c in db.query(Category).order_by(Category.id).all()]
+    return [
+        {"id": c.id, "name": c.name, "color": c.color, "archived": c.archived}
+        for c in db.query(Category).order_by(Category.id).all()
+    ]
 
 
 @router.post("/categories")
@@ -180,7 +163,11 @@ def create_category(payload: CategoryInput, db: Session = Depends(database.get_d
 @router.put("/categories/{category_id}")
 def edit_category(category_id: int, payload: CategoryInput, db: Session = Depends(database.get_db)):
     row = found(db, Category, category_id)
-    duplicate = db.query(Category).filter(func.lower(Category.name) == payload.name.lower(), Category.id != category_id).first()
+    duplicate = (
+        db.query(Category)
+        .filter(func.lower(Category.name) == payload.name.lower(), Category.id != category_id)
+        .first()
+    )
     if duplicate:
         raise HTTPException(409, "Tên danh mục đã tồn tại")
     row.name, row.color = payload.name, payload.color
@@ -198,21 +185,38 @@ def archive_category(category_id: int, db: Session = Depends(database.get_db)):
     return {"success": True}
 
 
+# =====================================================================
+# GIAO DỊCH THU / CHI
+# =====================================================================
 @router.get("/transactions")
-def transactions(month: str, category_id: Optional[int] = None, q: str = Query("", max_length=255),
-                 kind: Optional[Literal["expense", "income"]] = None,
-                 offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
-                 db: Session = Depends(database.get_db)):
+def transactions(
+    month: str,
+    category_id: Optional[int] = None,
+    q: str = Query("", max_length=255),
+    kind: Optional[Literal["expense", "income"]] = None,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(database.get_db),
+):
     start, end = month_range(month)
-    query = db.query(Transaction).filter(Transaction.deleted_at.is_(None), Transaction.spent_on >= start, Transaction.spent_on < end)
+    query = db.query(Transaction).filter(
+        Transaction.deleted_at.is_(None), Transaction.spent_on >= start, Transaction.spent_on < end
+    )
     if category_id:
         query = query.filter(Transaction.category_id == category_id)
     if q.strip():
-        query = query.filter(Transaction.search_title.contains(normalize_search(q.strip()), autoescape=True))
+        query = query.filter(
+            Transaction.search_title.contains(normalize_search(q.strip()), autoescape=True)
+        )
     if kind:
         query = query.filter(Transaction.kind == kind)
     total = query.count()
-    rows = query.order_by(Transaction.spent_on.desc(), Transaction.id.desc()).offset(offset).limit(limit).all()
+    rows = (
+        query.order_by(Transaction.spent_on.desc(), Transaction.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return {"items": [transaction_dict(r) for r in rows], "total": total}
 
 
@@ -255,7 +259,9 @@ def create_transaction(payload: TransactionInput, db: Session = Depends(database
 
 
 @router.put("/transactions/{transaction_id}")
-def edit_transaction(transaction_id: int, payload: EditTransactionInput, db: Session = Depends(database.get_db)):
+def edit_transaction(
+    transaction_id: int, payload: EditTransactionInput, db: Session = Depends(database.get_db)
+):
     row = found(db, Transaction, transaction_id)
     if row.deleted_at:
         raise HTTPException(409, "Giao dịch đã bị xóa")
@@ -286,28 +292,70 @@ def restore_transaction(transaction_id: int, db: Session = Depends(database.get_
     return transaction_dict(row)
 
 
+# =====================================================================
+# BÁO CÁO THÁNG VÀ NGÂN SÁCH
+# =====================================================================
 @router.get("/overview")
 def overview(month: str, db: Session = Depends(database.get_db)):
     start, end = month_range(month)
-    totals = dict(db.query(Transaction.kind, func.sum(Transaction.amount)).filter(
-        Transaction.deleted_at.is_(None), Transaction.spent_on >= start, Transaction.spent_on < end
-    ).group_by(Transaction.kind).all())
-    groups = db.query(Transaction.category_id, func.sum(Transaction.amount), func.count(Transaction.id)).filter(
-        Transaction.deleted_at.is_(None), Transaction.kind == "expense", Transaction.spent_on >= start,
-        Transaction.spent_on < end).group_by(Transaction.category_id).all()
-    daily = db.query(Transaction.spent_on,
-        func.sum(case((Transaction.kind == "expense", Transaction.amount), else_=0)),
-        func.sum(case((Transaction.kind == "income", Transaction.amount), else_=0))).filter(
-        Transaction.deleted_at.is_(None), Transaction.spent_on >= start,
-        Transaction.spent_on < end).group_by(Transaction.spent_on).order_by(Transaction.spent_on).all()
+    totals = dict(
+        db.query(Transaction.kind, func.sum(Transaction.amount))
+        .filter(
+            Transaction.deleted_at.is_(None),
+            Transaction.spent_on >= start,
+            Transaction.spent_on < end,
+        )
+        .group_by(Transaction.kind)
+        .all()
+    )
+    groups = (
+        db.query(Transaction.category_id, func.sum(Transaction.amount), func.count(Transaction.id))
+        .filter(
+            Transaction.deleted_at.is_(None),
+            Transaction.kind == "expense",
+            Transaction.spent_on >= start,
+            Transaction.spent_on < end,
+        )
+        .group_by(Transaction.category_id)
+        .all()
+    )
+    daily = (
+        db.query(
+            Transaction.spent_on,
+            func.sum(case((Transaction.kind == "expense", Transaction.amount), else_=0)),
+            func.sum(case((Transaction.kind == "income", Transaction.amount), else_=0)),
+        )
+        .filter(
+            Transaction.deleted_at.is_(None),
+            Transaction.spent_on >= start,
+            Transaction.spent_on < end,
+        )
+        .group_by(Transaction.spent_on)
+        .order_by(Transaction.spent_on)
+        .all()
+    )
     budgets = db.query(Budget).filter(Budget.month == start).all()
     budget = next((b.amount for b in budgets if b.category_id is None), None)
-    return {"income": int(totals.get("income", 0)), "expense": int(totals.get("expense", 0)),
-            "budget": budget, "remaining": budget - int(totals.get("expense", 0)) if budget is not None else None,
-            "categories": [{"category_id": key, "amount": int(amount), "count": count} for key, amount, count in groups],
-            "daily": [{"date": d.isoformat(), "amount": int(expense)} for d, expense, income in daily if expense],
-            "daily_cashflow": [{"date": d.isoformat(), "expense": int(expense), "income": int(income)} for d, expense, income in daily],
-            "budgets": [{"category_id": b.category_id, "amount": b.amount} for b in budgets]}
+    return {
+        "income": int(totals.get("income", 0)),
+        "expense": int(totals.get("expense", 0)),
+        "budget": budget,
+        "remaining": budget - int(totals.get("expense", 0)) if budget is not None else None,
+        "categories": [
+            {"category_id": key, "amount": int(amount), "count": count}
+            for key, amount, count in groups
+        ],
+        "daily": [
+            {"date": d.isoformat(), "amount": int(expense)}
+            for d, expense, income in daily
+            if expense
+        ],
+        "daily_cashflow": [
+            {"date": d.isoformat(), "expense": int(expense), "income": int(income)}
+            for d, expense, income in daily
+        ],
+        "budgets": [{"category_id": b.category_id, "amount": b.amount} for b in budgets],
+    }
 
 
 @router.put("/budgets/{month}")
@@ -325,11 +373,25 @@ def set_budget(month: str, payload: BudgetInput, db: Session = Depends(database.
     return {"success": True}
 
 
+# =====================================================================
+# KHOẢN ĐỊNH KỲ
+# =====================================================================
 @router.get("/recurring")
 def bills(db: Session = Depends(database.get_db)):
-    return [{"id": b.id, "name": b.name, "amount": b.amount, "category_id": b.category_id,
-             "next_due": b.next_due.isoformat(), "frequency": b.frequency,
-             "overdue": b.next_due < today()} for b in db.query(RecurringBill).filter_by(archived=False).order_by(RecurringBill.next_due, RecurringBill.id)]
+    return [
+        {
+            "id": b.id,
+            "name": b.name,
+            "amount": b.amount,
+            "category_id": b.category_id,
+            "next_due": b.next_due.isoformat(),
+            "frequency": b.frequency,
+            "overdue": b.next_due < today(),
+        }
+        for b in db.query(RecurringBill)
+        .filter_by(archived=False)
+        .order_by(RecurringBill.next_due, RecurringBill.id)
+    ]
 
 
 @router.post("/recurring")
@@ -367,19 +429,30 @@ def pay_bill(bill_id: int, payload: BillPayment, db: Session = Depends(database.
     row = db.query(RecurringBill).filter_by(id=bill_id, archived=False).with_for_update().first()
     if not row:
         raise HTTPException(404, "Không tìm thấy khoản định kỳ")
-    previous = db.query(Transaction).filter_by(recurring_id=bill_id, occurrence_on=payload.due_on).first()
+    previous = (
+        db.query(Transaction).filter_by(recurring_id=bill_id, occurrence_on=payload.due_on).first()
+    )
     if previous:
         if previous.deleted_at:
-            raise HTTPException(409, "Giao dịch kỳ này đã xóa. Khôi phục trong lịch sử thay vì thanh toán lại.")
+            raise HTTPException(
+                409, "Giao dịch kỳ này đã xóa. Khôi phục trong lịch sử thay vì thanh toán lại."
+            )
         if row.next_due == payload.due_on:
             row.next_due = next_due_date(row)
             commit(db)
         return transaction_dict(previous)
     if row.next_due != payload.due_on:
         raise HTTPException(409, "Kỳ thanh toán đã thay đổi. Hãy tải lại.")
-    transaction = Transaction(client_id=str(uuid5(NAMESPACE_URL, f"smartspend:bill:{row.id}:{payload.due_on}")), title=row.name,
-                              amount=row.amount, kind="expense", spent_on=payload.spent_on,
-                              category_id=row.category_id, recurring_id=row.id, occurrence_on=payload.due_on)
+    transaction = Transaction(
+        client_id=str(uuid5(NAMESPACE_URL, f"smartspend:bill:{row.id}:{payload.due_on}")),
+        title=row.name,
+        amount=row.amount,
+        kind="expense",
+        spent_on=payload.spent_on,
+        category_id=row.category_id,
+        recurring_id=row.id,
+        occurrence_on=payload.due_on,
+    )
     db.add(transaction)
     row.next_due = next_due_date(row)
     commit(db)
@@ -402,12 +475,26 @@ def restore_bill(bill_id: int, db: Session = Depends(database.get_db)):
     return {"success": True}
 
 
+# =====================================================================
+# MỤC TIÊU TIẾT KIỆM
+# =====================================================================
 @router.get("/goals")
 def goals(db: Session = Depends(database.get_db)):
-    saved = dict(db.query(Contribution.goal_id, func.sum(Contribution.amount)).group_by(Contribution.goal_id).all())
-    return [{"id": g.id, "name": g.name, "target": g.target, "saved": int(saved.get(g.id, 0)),
-             "deadline": g.deadline.isoformat() if g.deadline else None}
-            for g in db.query(Goal).filter_by(archived=False).order_by(Goal.id.desc())]
+    saved = dict(
+        db.query(Contribution.goal_id, func.sum(Contribution.amount))
+        .group_by(Contribution.goal_id)
+        .all()
+    )
+    return [
+        {
+            "id": g.id,
+            "name": g.name,
+            "target": g.target,
+            "saved": int(saved.get(g.id, 0)),
+            "deadline": g.deadline.isoformat() if g.deadline else None,
+        }
+        for g in db.query(Goal).filter_by(archived=False).order_by(Goal.id.desc())
+    ]
 
 
 @router.post("/goals")
@@ -452,8 +539,17 @@ def get_transaction(transaction_id: int, db: Session = Depends(database.get_db))
 @router.get("/goals/{goal_id}/contributions")
 def contributions(goal_id: int, db: Session = Depends(database.get_db)):
     found(db, Goal, goal_id)
-    return [{"id": c.id, "client_id": c.client_id, "amount": c.amount, "saved_on": c.saved_on.isoformat()}
-            for c in db.query(Contribution).filter_by(goal_id=goal_id).order_by(Contribution.saved_on.desc(), Contribution.id.desc())]
+    return [
+        {
+            "id": c.id,
+            "client_id": c.client_id,
+            "amount": c.amount,
+            "saved_on": c.saved_on.isoformat(),
+        }
+        for c in db.query(Contribution)
+        .filter_by(goal_id=goal_id)
+        .order_by(Contribution.saved_on.desc(), Contribution.id.desc())
+    ]
 
 
 @router.post("/goals/{goal_id}/contributions")
@@ -463,10 +559,19 @@ def contribute(goal_id: int, payload: ContributionInput, db: Session = Depends(d
         raise HTTPException(409, "Mục tiêu đã được lưu trữ")
     existing = db.query(Contribution).filter_by(client_id=str(payload.client_id)).first()
     if existing:
-        if existing.goal_id != goal_id or existing.amount != payload.amount or existing.saved_on != payload.saved_on:
+        if (
+            existing.goal_id != goal_id
+            or existing.amount != payload.amount
+            or existing.saved_on != payload.saved_on
+        ):
             raise HTTPException(409, "Mã đóng góp đã được sử dụng")
         return {"id": existing.id}
-    row = Contribution(goal_id=goal_id, client_id=str(payload.client_id), amount=payload.amount, saved_on=payload.saved_on)
+    row = Contribution(
+        goal_id=goal_id,
+        client_id=str(payload.client_id),
+        amount=payload.amount,
+        saved_on=payload.saved_on,
+    )
     db.add(row)
     commit(db)
     return {"id": row.id}
@@ -479,10 +584,19 @@ def remove_contribution(contribution_id: int, db: Session = Depends(database.get
     return {"success": True}
 
 
+# =====================================================================
+# SỞ THÍCH NGƯỜI DÙNG
+# =====================================================================
 @router.get("/preferences")
 def preferences(db: Session = Depends(database.get_db)):
-    return {key: (db.get(Preference, (db.info.get("user_id", OWNER_ID), key)).value if db.get(Preference, (db.info.get("user_id", OWNER_ID), key)) else default)
-            for key, default in (("tastes", ""), ("avoid", ""), ("people", "2 người"))}
+    return {
+        key: (
+            db.get(Preference, (db.info.get("user_id", OWNER_ID), key)).value
+            if db.get(Preference, (db.info.get("user_id", OWNER_ID), key))
+            else default
+        )
+        for key, default in (("tastes", ""), ("avoid", ""), ("people", "2 người"))
+    }
 
 
 @router.put("/preferences")

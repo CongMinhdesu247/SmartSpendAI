@@ -4,20 +4,30 @@ import sys
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Literal
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Query
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import or_, and_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend import database, models
+from backend.schemas.plans import (
+    TrimmedInput,
+    ConfigUpdateRequest,
+    GeneratePlanRequest,
+    PatchItemRequest,
+    ReplaceItemRequest,
+)
 from backend.ai_service import generate_smart_plan, suggest_replacement
-from backend.finance_api import router as finance_router, initialize_finance, preferences as read_preferences
+from backend.finance_api import (
+    router as finance_router,
+    initialize_finance,
+    preferences as read_preferences,
+)
 from backend.finance_models import Transaction, PlanArchive
 from backend.ai_limits import ai_slot
 from backend.plan_payments import sync_completion_payment
@@ -30,68 +40,9 @@ else:
 
 
 # =====================================================================
-# PYDANTIC REQUEST SCHEMAS CHO REST API
+# CẤU HÌNH MODULE
 # =====================================================================
 logger = logging.getLogger(__name__)
-
-
-class TrimmedInput(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-
-
-class ConfigUpdateRequest(BaseModel):
-    gemini_api_key: Optional[str] = Field(default=None, description="Google Gemini API Key")
-    database_url: Optional[str] = Field(
-        default=None,
-        description="Chuỗi kết nối Supabase PostgreSQL (postgresql://... hoặc postgres://...)",
-    )
-    clear_api_key: bool = False
-    clear_database_url: bool = False
-
-
-class GeneratePlanRequest(TrimmedInput):
-    title: Optional[str] = Field(
-        default=None,
-        max_length=255,
-        description="Tên kế hoạch tùy chọn do người dùng đặt (nếu để trống AI sẽ tự đặt)",
-    )
-    plan_type: Literal["meal", "hangout"] = Field(
-        default="meal",
-        description="Loại kế hoạch: 'meal' (Thực đơn & đi chợ) hoặc 'hangout' (Đi chơi & hẹn hò)",
-    )
-    total_budget: int = Field(
-        default=500000,
-        ge=10000,
-        le=2000000000,
-        description="Ngân sách tối đa (VNĐ)",
-    )
-    region: str = Field(default="TP. Hồ Chí Minh", min_length=1, max_length=120, description="Khu vực / Thành phố")
-    days_or_people: str = Field(
-        default="7 ngày cho 1-2 người",
-        min_length=1, max_length=120,
-        description="Thời lượng hoặc số lượng người tham gia",
-    )
-    preferences: str = Field(
-        default="",
-        max_length=2000,
-        description="Sở thích, khẩu vị, hình thức hoặc yêu cầu đặc biệt",
-    )
-    pantry: str = Field(default="", max_length=2000)
-
-
-class PatchItemRequest(TrimmedInput):
-    is_completed: Optional[bool] = Field(
-        default=None,
-        description="Trạng thái đã mua / đã chi tiêu",
-    )
-    price: Optional[int] = Field(
-        default=None,
-        ge=0,
-        le=2000000000,
-        description="Giá tiền thực tế chỉnh sửa (VNĐ)",
-    )
-    name: Optional[str] = Field(default=None, min_length=1, max_length=255, description="Tên mục (tùy chọn chỉnh sửa)")
-    details: Optional[str] = Field(default=None, max_length=5000, description="Chi tiết mục (tùy chọn chỉnh sửa)")
 
 
 # =====================================================================
@@ -126,11 +77,7 @@ def recalculate_plan_totals(db: Session, plan: models.Plan) -> None:
     Tính toán lại tổng chi phí dự kiến (`estimated_cost`) và tổng chi tiêu thực tế (`actual_spent`)
     của `Plan` dựa trên toàn bộ `PlanItem` hiện có.
     """
-    items = (
-        db.query(models.PlanItem)
-        .filter(models.PlanItem.plan_id == plan.id)
-        .all()
-    )
+    items = db.query(models.PlanItem).filter(models.PlanItem.plan_id == plan.id).all()
     estimated = sum(max(0, int(item.price or 0)) for item in items)
     if estimated > 2_000_000_000:
         raise HTTPException(422, "Tổng giá dự kiến của kế hoạch không được vượt 2 tỷ đồng")
@@ -177,9 +124,13 @@ def get_config(request: Request) -> Dict[str, Any]:
     api_key = cfg.get("gemini_api_key", "")
     can_edit = loopback_admin(request)
     if not can_edit:
-        return {"has_api_key": bool(api_key), "has_database_url": bool(cfg.get("database_url")),
-                "can_edit_config": False, "cloud_mode": database.is_cloud_mode(),
-                "db_status": {"is_cloud_postgres": db_status["is_cloud_postgres"]}}
+        return {
+            "has_api_key": bool(api_key),
+            "has_database_url": bool(cfg.get("database_url")),
+            "can_edit_config": False,
+            "cloud_mode": database.is_cloud_mode(),
+            "db_status": {"is_cloud_postgres": db_status["is_cloud_postgres"]},
+        }
     masked_key = (
         f"{api_key[:6]}...{api_key[-4:]}" if len(api_key) > 10 else ("Đã nhập" if api_key else "")
     )
@@ -200,8 +151,12 @@ def update_config(payload: ConfigUpdateRequest, request: Request) -> Dict[str, A
     đồng thời tự động re-init kết nối Database và chạy `Base.metadata.create_all` lên Supabase.
     """
     if not loopback_admin(request):
-        raise HTTPException(403, "Cấu hình hosting được quản lý trên máy tính hoặc bảng điều khiển hosting")
-    if request.headers.get("origin") and request.headers["origin"].rstrip("/") != str(request.base_url).rstrip("/"):
+        raise HTTPException(
+            403, "Cấu hình hosting được quản lý trên máy tính hoặc bảng điều khiển hosting"
+        )
+    if request.headers.get("origin") and request.headers["origin"].rstrip("/") != str(
+        request.base_url
+    ).rstrip("/"):
         raise HTTPException(403, "Yêu cầu không đến từ app")
     current_cfg = database.load_config()
 
@@ -275,11 +230,14 @@ def network_qr(request: Request):
     import io
     import qrcode
     from qrcode.image.svg import SvgPathImage
+
     info = get_network_info(request)
     image = qrcode.make(info["app_url"], image_factory=SvgPathImage, border=3)
     stream = io.BytesIO()
     image.save(stream)
-    return Response(stream.getvalue(), media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
+    return Response(
+        stream.getvalue(), media_type="image/svg+xml", headers={"Cache-Control": "no-store"}
+    )
 
 
 @app.get("/healthz")
@@ -299,10 +257,17 @@ def api_generate_plan(
     """Gọi Gemini AI tạo kế hoạch chi tiêu -> Lưu vào Database -> Trả về JSON chi tiết."""
     try:
         saved = read_preferences(db)
-        personal_preferences = "\n".join(filter(None, [payload.preferences,
-            f"Khẩu vị: {saved['tastes']}" if saved['tastes'] else "",
-            f"Tránh: {saved['avoid']}" if saved['avoid'] else "",
-            f"Nguyên liệu đã có, không mua lại: {payload.pantry}" if payload.pantry else ""]))
+        personal_preferences = "\n".join(
+            filter(
+                None,
+                [
+                    payload.preferences,
+                    f"Khẩu vị: {saved['tastes']}" if saved["tastes"] else "",
+                    f"Tránh: {saved['avoid']}" if saved["avoid"] else "",
+                    f"Nguyên liệu đã có, không mua lại: {payload.pantry}" if payload.pantry else "",
+                ],
+            )
+        )
         db.rollback()  # Do not hold a DB transaction during a network AI call.
         ai_result = generate_smart_plan(
             plan_type=payload.plan_type,
@@ -315,7 +280,9 @@ def api_generate_plan(
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as exc:
         logger.error("AI plan generation failed (%s)", type(exc).__name__)
-        raise HTTPException(status_code=502, detail="Chưa gọi được AI. Kiểm tra API key và thử lại.")
+        raise HTTPException(
+            status_code=502, detail="Chưa gọi được AI. Kiểm tra API key và thử lại."
+        )
 
     try:
         custom_title = (payload.title or "").strip()
@@ -373,8 +340,12 @@ def list_plans(
         anchor = db.get(models.Plan, before_id)
         if not anchor:
             raise HTTPException(409, "Danh sách vừa thay đổi. Hãy tải lại kế hoạch.")
-        query = query.filter(or_(models.Plan.created_at < anchor.created_at,
-            and_(models.Plan.created_at == anchor.created_at, models.Plan.id < anchor.id)))
+        query = query.filter(
+            or_(
+                models.Plan.created_at < anchor.created_at,
+                and_(models.Plan.created_at == anchor.created_at, models.Plan.id < anchor.id),
+            )
+        )
     plans = query.order_by(models.Plan.created_at.desc(), models.Plan.id.desc()).limit(limit).all()
     return [plan.to_dict(include_items=True) for plan in plans]
 
@@ -464,7 +435,7 @@ def delete_plan(
 
 
 # =====================================================================
-# PHỤC VỤ GIAO DIỆN WEB DASHBOARD & PWA (MOUNT FRONTEND STATIC FILES)
+# 4. KHÔI PHỤC, SAO CHÉP VÀ THAY THẾ HẠNG MỤC
 # =====================================================================
 @app.post("/api/plans/trash/{archive_id}/restore")
 def restore_plan(archive_id: int, db: Session = Depends(database.get_db)):
@@ -477,21 +448,42 @@ def restore_plan(archive_id: int, db: Session = Depends(database.get_db)):
             return plan.to_dict()
         raise HTTPException(409, "Bản lưu này đã được khôi phục trước đó")
     # Atomic claim also serializes retries on SQLite, where FOR UPDATE is ignored.
-    claimed = db.query(PlanArchive).filter_by(id=archive_id, restored=False).update(
-        {"restored": True}, synchronize_session=False)
+    claimed = (
+        db.query(PlanArchive)
+        .filter_by(id=archive_id, restored=False)
+        .update({"restored": True}, synchronize_session=False)
+    )
     if not claimed:
         db.rollback()
         db.expire_all()
         archived = db.get(PlanArchive, archive_id)
-        plan = db.get(models.Plan, archived.restored_plan_id) if archived and archived.restored_plan_id else None
+        plan = (
+            db.get(models.Plan, archived.restored_plan_id)
+            if archived and archived.restored_plan_id
+            else None
+        )
         if plan:
             return plan.to_dict()
         raise HTTPException(409, "Kế hoạch vừa được khôi phục. Hãy tải lại danh sách.")
     snapshot = json.loads(archived.snapshot)
-    plan = models.Plan(**{key: snapshot[key] for key in ("title", "plan_type", "total_budget", "estimated_cost", "region", "advice")}, actual_spent=0)
+    plan = models.Plan(
+        **{
+            key: snapshot[key]
+            for key in ("title", "plan_type", "total_budget", "estimated_cost", "region", "advice")
+        },
+        actual_spent=0,
+    )
     if snapshot.get("created_at"):
         plan.created_at = datetime.fromisoformat(snapshot["created_at"])
-    plan.items = [models.PlanItem(**{key: item[key] for key in ("category", "time_or_day", "name", "details", "price", "is_completed")}) for item in snapshot["items"]]
+    plan.items = [
+        models.PlanItem(
+            **{
+                key: item[key]
+                for key in ("category", "time_or_day", "name", "details", "price", "is_completed")
+            }
+        )
+        for item in snapshot["items"]
+    ]
     db.add(plan)
     db.flush()
     for saved, item in zip(snapshot["items"], plan.items):
@@ -511,22 +503,38 @@ def copy_plan(plan_id: int, db: Session = Depends(database.get_db)):
     original = db.get(models.Plan, plan_id)
     if not original:
         raise HTTPException(404, "Không tìm thấy kế hoạch")
-    duplicate = models.Plan(title=(original.title[:240] + " (bản sao)"), plan_type=original.plan_type,
-        total_budget=original.total_budget, estimated_cost=original.estimated_cost,
-        actual_spent=0, region=original.region, advice=original.advice)
-    duplicate.items = [models.PlanItem(category=i.category, time_or_day=i.time_or_day,
-        name=i.name, details=i.details, price=i.price, is_completed=False) for i in original.items]
+    duplicate = models.Plan(
+        title=(original.title[:240] + " (bản sao)"),
+        plan_type=original.plan_type,
+        total_budget=original.total_budget,
+        estimated_cost=original.estimated_cost,
+        actual_spent=0,
+        region=original.region,
+        advice=original.advice,
+    )
+    duplicate.items = [
+        models.PlanItem(
+            category=i.category,
+            time_or_day=i.time_or_day,
+            name=i.name,
+            details=i.details,
+            price=i.price,
+            is_completed=False,
+        )
+        for i in original.items
+    ]
     db.add(duplicate)
     db.commit()
     return duplicate.to_dict()
 
 
-class ReplaceItemRequest(TrimmedInput):
-    preferences: str = Field(default="", max_length=2000)
-
-
 @app.post("/api/items/{item_id}/replace")
-def replace_item(item_id: int, payload: ReplaceItemRequest, db: Session = Depends(database.get_db), _ai=Depends(ai_slot)):
+def replace_item(
+    item_id: int,
+    payload: ReplaceItemRequest,
+    db: Session = Depends(database.get_db),
+    _ai=Depends(ai_slot),
+):
     item = db.get(models.PlanItem, item_id)
     if not item:
         raise HTTPException(404, "Không tìm thấy hạng mục")
@@ -536,9 +544,16 @@ def replace_item(item_id: int, payload: ReplaceItemRequest, db: Session = Depend
     old = (item.name, item.details, item.price, item.is_completed)
     other_cost = sum(i.price for i in plan.items if i.id != item.id)
     budget = max(0, plan.total_budget - other_cost)
-    context = {"category": item.category, "name": item.name, "details": item.details,
-               "region": plan.region, "budget": budget, "preferences": payload.preferences,
-               "personal": read_preferences(db), "time_or_day": item.time_or_day}
+    context = {
+        "category": item.category,
+        "name": item.name,
+        "details": item.details,
+        "region": plan.region,
+        "budget": budget,
+        "preferences": payload.preferences,
+        "personal": read_preferences(db),
+        "time_or_day": item.time_or_day,
+    }
     db.rollback()
     try:
         replacement = suggest_replacement(context)
@@ -549,7 +564,11 @@ def replace_item(item_id: int, payload: ReplaceItemRequest, db: Session = Depend
         raise HTTPException(502, "Chưa đổi được mục bằng AI. Hãy thử lại.")
     db.expire_all()
     item = db.query(models.PlanItem).filter_by(id=item_id).with_for_update().first()
-    if not item or (item.name, item.details, item.price, item.is_completed) != old or item.paid_amount:
+    if (
+        not item
+        or (item.name, item.details, item.price, item.is_completed) != old
+        or item.paid_amount
+    ):
         raise HTTPException(409, "Hạng mục vừa thay đổi. Hãy tải lại trước khi đổi.")
     # Check the whole plan again after AI returns, in case another item changed.
     other_cost = sum(i.price for i in item.plan.items if i.id != item_id)
@@ -565,6 +584,9 @@ def replace_item(item_id: int, payload: ReplaceItemRequest, db: Session = Depend
     return {"plan": item.plan.to_dict()}
 
 
+# =====================================================================
+# 5. PHỤC VỤ GIAO DIỆN WEB VÀ PWA
+# =====================================================================
 @app.get("/")
 def serve_root():
     index_file = FRONTEND_DIR / "index.html"
@@ -591,4 +613,3 @@ if FRONTEND_DIR.exists():
         StaticFiles(directory=str(FRONTEND_DIR), html=True),
         name="frontend_root",
     )
-

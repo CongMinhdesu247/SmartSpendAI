@@ -1,6 +1,6 @@
 // Local Lucide SVG sprite; no icon runtime or icon font required.
 function renderIcon(name) {
-  return `<svg class="icon" aria-hidden="true"><use href="/icons.svg?v=12#${name}"></use></svg>`;
+  return `<svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#${name}"></use></svg>`;
 }
 
 // =====================================================================
@@ -13,7 +13,9 @@ let historyFilter = "all"; // "all" | "meal" | "hangout"
 let financeChart = null;
 let currentChartType = "doughnut"; // "doughnut" | "bar"
 let canEditServerConfig = false;
-let plansHaveMore = false, plansLoading = false, plansEpoch = 0;
+let plansHaveMore = false,
+  plansLoading = false,
+  plansEpoch = 0;
 const PLAN_PAGE_SIZE = 30;
 const pendingPlanItems = new Set();
 let planWriteQueue = Promise.resolve();
@@ -23,6 +25,98 @@ function formatVND(amount) {
   const value = Math.round(Number(amount) || 0);
   return value.toLocaleString("vi-VN") + " ₫";
 }
+
+// Money fields show Vietnamese grouping while APIs receive whole-number VND.
+function parseMoneyInput(value) {
+  const text = String(value ?? "").trim();
+  if (!/^(?:\d+|\d{1,3}(?:\.\d{3})+)$/.test(text)) return NaN;
+  const amount = Number(text.replace(/\./g, ""));
+  return Number.isSafeInteger(amount) ? amount : NaN;
+}
+
+function formatMoneyInputValue(value) {
+  if (value === "" || value == null) return "";
+  const amount = parseMoneyInput(value);
+  return Number.isFinite(amount) ? amount.toLocaleString("vi-VN") : String(value);
+}
+
+function validateMoneyInput(input) {
+  if (!input.value.trim()) {
+    input.setCustomValidity("");
+    return;
+  }
+  const amount = parseMoneyInput(input.value);
+  const minimum = Number(input.dataset.moneyMin || 0);
+  const maximum = Number(input.dataset.moneyMax || 9000000000000);
+  input.setCustomValidity(
+    !Number.isFinite(amount)
+      ? "Nhập số tiền nguyên, dùng dấu chấm để tách hàng nghìn, ví dụ 1.000.000."
+      : amount < minimum || amount > maximum
+        ? `Số tiền phải từ ${formatVND(minimum)} đến ${formatVND(maximum)}.`
+        : "",
+  );
+}
+
+function formatMoneyInput(input) {
+  const text = input.value;
+  // Leave invalid characters visible so a decimal, sign or typo is never
+  // silently converted into a different amount.
+  if (/^[\d.]+$/.test(text)) {
+    const position = input.selectionStart;
+    const digits = text.replace(/\./g, "");
+    const normalized = digits.replace(/^0+(?=\d)/, "");
+    const formatted = normalized.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    input.value = formatted;
+    if (position != null && document.activeElement === input) {
+      const precedingDigits = Math.max(
+        0,
+        text.slice(0, position).replace(/\./g, "").length - (digits.length - normalized.length),
+      );
+      let caret = 0,
+        seen = 0;
+      while (caret < formatted.length && seen < precedingDigits) {
+        if (/\d/.test(formatted[caret])) seen++;
+        caret++;
+      }
+      input.setSelectionRange(caret, caret);
+    }
+  }
+  validateMoneyInput(input);
+}
+
+document.addEventListener("paste", (event) => {
+  const input = event.target;
+  if (!input.matches?.("input[data-money]") || !event.clipboardData) return;
+  const text = event.clipboardData.getData("text").trim();
+  event.preventDefault();
+  // Parse a pasted amount strictly: 1.000.000 is valid; 1.5 is not.
+  input.setRangeText(
+    Number.isFinite(parseMoneyInput(text)) ? text.replace(/\./g, "") : text,
+    input.selectionStart,
+    input.selectionEnd,
+    "end",
+  );
+  if (Number.isFinite(parseMoneyInput(text))) {
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  } else {
+    validateMoneyInput(input);
+  }
+});
+
+document.addEventListener("beforeinput", (event) => {
+  const input = event.target;
+  if (!input.matches?.("input[data-money]") || input.selectionStart !== input.selectionEnd) return;
+  const position = input.selectionStart;
+  if (event.inputType === "deleteContentBackward" && input.value[position - 1] === ".") {
+    event.preventDefault();
+    input.setRangeText("", Math.max(0, position - 2), position, "end");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  } else if (event.inputType === "deleteContentForward" && input.value[position] === ".") {
+    event.preventDefault();
+    input.setRangeText("", position, position + 2, "end");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+});
 
 // Hiển thị thông báo nổi (Toast)
 function showToast(message, isError = false) {
@@ -75,9 +169,12 @@ async function loadConfigStatus() {
     const data = await res.json();
 
     canEditServerConfig = data.can_edit_config === true;
-    document.querySelectorAll('[data-server-config]').forEach(control => control.classList.toggle('hidden', !canEditServerConfig));
+    document
+      .querySelectorAll("[data-server-config]")
+      .forEach((control) => control.classList.toggle("hidden", !canEditServerConfig));
     if (!canEditServerConfig) {
-      if (!document.getElementById('settingsModal').classList.contains('hidden')) hideModal('settingsModal');
+      if (!document.getElementById("settingsModal").classList.contains("hidden"))
+        hideModal("settingsModal");
       return;
     }
 
@@ -85,9 +182,23 @@ async function loadConfigStatus() {
 
     const apiKeyInput = document.getElementById("configApiKeyInput");
     const dbUrlInput = document.getElementById("configDbUrlInput");
-    if (apiKeyInput) { apiKeyInput.value = ""; apiKeyInput.placeholder = data.has_api_key ? "Đã cấu hình (để trống để giữ nguyên)" : "AIzaSy…"; apiKeyInput.disabled = !data.can_edit_config; }
-    if (dbUrlInput) { dbUrlInput.value = ""; dbUrlInput.placeholder = data.has_database_url ? "Đã cấu hình (để trống để giữ nguyên)" : "postgresql://…"; dbUrlInput.disabled = !data.can_edit_config; }
-    document.getElementById("saveConfigSubmitBtn").classList.toggle("hidden", !data.can_edit_config);
+    if (apiKeyInput) {
+      apiKeyInput.value = "";
+      apiKeyInput.placeholder = data.has_api_key
+        ? "Đã cấu hình (để trống để giữ nguyên)"
+        : "AIzaSy…";
+      apiKeyInput.disabled = !data.can_edit_config;
+    }
+    if (dbUrlInput) {
+      dbUrlInput.value = "";
+      dbUrlInput.placeholder = data.has_database_url
+        ? "Đã cấu hình (để trống để giữ nguyên)"
+        : "postgresql://…";
+      dbUrlInput.disabled = !data.can_edit_config;
+    }
+    document
+      .getElementById("saveConfigSubmitBtn")
+      .classList.toggle("hidden", !data.can_edit_config);
     document.getElementById("configClearOptions").classList.toggle("hidden", !data.can_edit_config);
     document.getElementById("clearApiKeyInput").checked = false;
     document.getElementById("clearDbUrlInput").checked = false;
@@ -96,7 +207,7 @@ async function loadConfigStatus() {
     if (statusBox) {
       if (data.db_status?.is_cloud_postgres) {
         statusBox.innerHTML = ` <strong class="text-slate-700">Supabase:</strong> <code>${escapeHtml(
-          data.db_status.configured_url_masked
+          data.db_status.configured_url_masked,
         )}</code>. `;
       } else {
         statusBox.innerHTML = ` <strong class="text-slate-700">Lưu trên máy:</strong> <code>smartspend_local.db</code>.`;
@@ -149,9 +260,9 @@ document.addEventListener("keydown", (event) => {
   if (!modal) return;
   if (event.key === "Escape") hideModal(modal.id);
   if (event.key !== "Tab") return;
-  const controls = [...modal.querySelectorAll('button, input, select, textarea, summary, a[href]')].filter(
-    (control) => !control.disabled && control.getClientRects().length
-  );
+  const controls = [
+    ...modal.querySelectorAll("button, input, select, textarea, summary, a[href]"),
+  ].filter((control) => !control.disabled && control.getClientRects().length);
   const first = controls[0];
   const last = controls[controls.length - 1];
   if (event.shiftKey && document.activeElement === first) {
@@ -226,28 +337,34 @@ async function openIphoneModal() {
   qrImage.classList.add("hidden");
   try {
     const res = await fetch("/api/network-info");
-    if (!res.ok) throw new Error('Không lấy được địa chỉ app');
+    if (!res.ok) throw new Error("Không lấy được địa chỉ app");
     const data = await res.json();
     const lanUrl = data.app_url || data.lan_url || window.location.origin;
 
     document.getElementById("iphoneLanUrlCode").textContent = lanUrl;
-    document.getElementById("iphoneConnectionMessage").textContent = data.public_url ? "Quét mã QR bằng Camera iPhone. Địa chỉ HTTPS này dùng được qua Wi-Fi hoặc 4G/5G." : "Địa chỉ này chỉ dùng cùng Wi-Fi. Cần cấu hình hosting để mở app khi máy tính tắt.";
-    document.getElementById("iphoneConnectionNote").textContent = data.public_url ? "Mở bằng Safari, đăng nhập và chọn Chia sẻ → Thêm vào Màn hình chính." : "Hosting chưa được kết nối. App trên máy tính vẫn cần mở khi dùng địa chỉ LAN.";
+    document.getElementById("iphoneConnectionMessage").textContent = data.public_url
+      ? "Quét mã QR bằng Camera iPhone. Địa chỉ HTTPS này dùng được qua Wi-Fi hoặc 4G/5G."
+      : "Địa chỉ này chỉ dùng cùng Wi-Fi. Cần cấu hình hosting để mở app khi máy tính tắt.";
+    document.getElementById("iphoneConnectionNote").textContent = data.public_url
+      ? "Mở bằng Safari, đăng nhập và chọn Chia sẻ → Thêm vào Màn hình chính."
+      : "Hosting chưa được kết nối. App trên máy tính vẫn cần mở khi dùng địa chỉ LAN.";
     // Image requests cannot attach the account header used by private APIs.
     // Fetch through the authenticated wrapper, then render the SVG locally.
     try {
-      const qr = await fetch('/api/network-qr', { cache: 'no-store' });
-      if (!qr.ok) throw new Error('Không tải được QR');
-      qrImage.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(await qr.text());
-      qrImage.classList.remove('hidden');
+      const qr = await fetch("/api/network-qr", { cache: "no-store" });
+      if (!qr.ok) throw new Error("Không tải được QR");
+      qrImage.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(await qr.text());
+      qrImage.classList.remove("hidden");
     } catch (_) {
-      document.getElementById('iphoneConnectionNote').textContent = 'Chưa tải được mã QR. Bạn vẫn có thể sao chép đường link và mở bằng Safari trên iPhone.';
+      document.getElementById("iphoneConnectionNote").textContent =
+        "Chưa tải được mã QR. Bạn vẫn có thể sao chép đường link và mở bằng Safari trên iPhone.";
     }
   } catch (err) {
     const fallbackUrl = window.location.origin;
     document.getElementById("iphoneLanUrlCode").textContent = fallbackUrl;
     document.getElementById("iphoneQrImg").removeAttribute("src");
-    document.getElementById("iphoneConnectionMessage").textContent = "Chưa lấy được địa chỉ app. Hãy kiểm tra kết nối và thử lại.";
+    document.getElementById("iphoneConnectionMessage").textContent =
+      "Chưa lấy được địa chỉ app. Hãy kiểm tra kết nối và thử lại.";
   }
 }
 
@@ -286,8 +403,7 @@ function switchPlanMode(mode) {
     hangoutBtn.className = inactiveClass;
     durationInput.value = "7 ngày";
     titleInput.placeholder = "Thực đơn tuần này";
-    prefInput.placeholder =
-      "Khẩu vị, món cần tránh…";
+    prefInput.placeholder = "Khẩu vị, món cần tránh…";
     styleSelect.innerHTML = `
       <option value="Nấu ăn tại nhà & mang cơm đi làm">Nấu tại nhà & mang cơm</option>
       <option value="Cơm gia đình tiết kiệm, đủ chất">Cơm gia đình tiết kiệm</option>
@@ -299,8 +415,7 @@ function switchPlanMode(mode) {
     mealBtn.className = inactiveClass;
     durationInput.value = "1 buổi tối cuối tuần";
     titleInput.placeholder = "Hẹn hò cuối tuần";
-    prefInput.placeholder =
-      "Địa điểm, hoạt động yêu thích…";
+    prefInput.placeholder = "Địa điểm, hoạt động yêu thích…";
     styleSelect.innerHTML = `
       <option value="Hẹn hò cặp đôi lãng mạn">Hẹn hò cặp đôi</option>
       <option value="Đi chơi tụ tập nhóm bạn">Tụ tập nhóm bạn</option>
@@ -311,12 +426,13 @@ function switchPlanMode(mode) {
 }
 
 function updateBudgetPreview(val) {
-  document.getElementById("budgetPreviewBadge").textContent = formatVND(val);
+  document.getElementById("budgetPreviewBadge").textContent = formatVND(parseMoneyInput(val));
 }
 
 function setQuickBudget(amount) {
   const input = document.getElementById("budgetInput");
-  input.value = amount;
+  input.value = formatMoneyInputValue(amount);
+  formatMoneyInput(input);
   updateBudgetPreview(amount);
 }
 
@@ -325,7 +441,7 @@ async function handleGeneratePlan(event) {
 
   const planType = document.getElementById("planTypeInput").value;
   const customTitle = document.getElementById("planTitleInput").value.trim();
-  const totalBudget = Number(document.getElementById("budgetInput").value) || 500000;
+  const totalBudget = parseMoneyInput(document.getElementById("budgetInput").value);
   const region = document.getElementById("regionInput").value;
   const styleMode = document.getElementById("styleModeInput").value;
   const duration = document.getElementById("durationInput").value.trim();
@@ -333,10 +449,7 @@ async function handleGeneratePlan(event) {
   const notes = document.getElementById("preferencesInput").value.trim();
 
   const daysOrPeopleCombined = `${duration} cho ${people}`;
-  const fullPreferences = [
-    `Hình thức: ${styleMode}`,
-    notes ? `Ghi chú riêng: ${notes}` : "",
-  ]
+  const fullPreferences = [`Hình thức: ${styleMode}`, notes ? `Ghi chú riêng: ${notes}` : ""]
     .filter(Boolean)
     .join(". ");
 
@@ -362,10 +475,18 @@ async function handleGeneratePlan(event) {
 
     const data = await res.json();
     if (!res.ok) {
-      if (res.status === 400 && typeof data.detail === "string" && data.detail.toLowerCase().includes("api key")) {
+      if (
+        res.status === 400 &&
+        typeof data.detail === "string" &&
+        data.detail.toLowerCase().includes("api key")
+      ) {
         openSettingsModal();
       }
-      throw new Error(typeof data.detail === "string" ? data.detail : "Dữ liệu chưa hợp lệ. Hãy kiểm tra độ dài và nội dung biểu mẫu.");
+      throw new Error(
+        typeof data.detail === "string"
+          ? data.detail
+          : "Dữ liệu chưa hợp lệ. Hãy kiểm tra độ dài và nội dung biểu mẫu.",
+      );
     }
 
     document.getElementById("planTitleInput").value = "";
@@ -386,18 +507,20 @@ async function loadPlansFromDB(targetPlanId = null, append = false) {
   if (append && (plansLoading || !plansHaveMore)) return;
   const epoch = ++plansEpoch;
   plansLoading = true;
-  const moreButton = document.getElementById('morePlansButton');
+  const moreButton = document.getElementById("morePlansButton");
   if (moreButton) moreButton.disabled = true;
   try {
     const params = new URLSearchParams({ limit: PLAN_PAGE_SIZE });
-    if (historyFilter !== 'all') params.set('plan_type', historyFilter);
-    if (append && allPlans.length) params.set('before_id', allPlans.at(-1).id);
+    if (historyFilter !== "all") params.set("plan_type", historyFilter);
+    if (append && allPlans.length) params.set("before_id", allPlans.at(-1).id);
     const res = await fetch(`/api/plans?${params}`);
     if (!res.ok) throw new Error("Không tải được kế hoạch");
     const page = await res.json();
     if (epoch !== plansEpoch) return;
     plansHaveMore = page.length === PLAN_PAGE_SIZE;
-    allPlans = append ? [...allPlans, ...page.filter(p => !allPlans.some(old => old.id === p.id))] : page;
+    allPlans = append
+      ? [...allPlans, ...page.filter((p) => !allPlans.some((old) => old.id === p.id))]
+      : page;
 
     renderPlansHistoryList();
     if (append) return;
@@ -438,15 +561,24 @@ async function loadPlansFromDB(targetPlanId = null, append = false) {
   } finally {
     if (epoch === plansEpoch) {
       plansLoading = false;
-      if (moreButton) { moreButton.disabled = false; moreButton.classList.toggle('hidden', !plansHaveMore); }
+      if (moreButton) {
+        moreButton.disabled = false;
+        moreButton.classList.toggle("hidden", !plansHaveMore);
+      }
     }
   }
 }
 
 function setHistoryFilter(filterType) {
   historyFilter = filterType;
-  for (const [suffix, value] of [["All", "all"], ["Meal", "meal"], ["Hangout", "hangout"]]) {
-    document.getElementById(`historyFilter${suffix}`).setAttribute("aria-pressed", String(filterType === value));
+  for (const [suffix, value] of [
+    ["All", "all"],
+    ["Meal", "meal"],
+    ["Hangout", "hangout"],
+  ]) {
+    document
+      .getElementById(`historyFilter${suffix}`)
+      .setAttribute("aria-pressed", String(filterType === value));
   }
 
   const activeCls =
@@ -467,9 +599,7 @@ function setHistoryFilter(filterType) {
 function renderPlansHistoryList() {
   const container = document.getElementById("plansHistoryList");
   const filtered =
-    historyFilter === "all"
-      ? allPlans
-      : allPlans.filter((p) => p.plan_type === historyFilter);
+    historyFilter === "all" ? allPlans : allPlans.filter((p) => p.plan_type === historyFilter);
 
   if (filtered.length === 0) {
     container.innerHTML = `
@@ -484,9 +614,7 @@ function renderPlansHistoryList() {
     .map((plan) => {
       const isSelected = currentPlan && currentPlan.id === plan.id;
       const icon = renderIcon(plan.plan_type === "meal" ? "utensils" : "coffee");
-      const dateStr = plan.created_at
-        ? new Date(plan.created_at).toLocaleDateString("vi-VN")
-        : "";
+      const dateStr = plan.created_at ? new Date(plan.created_at).toLocaleDateString("vi-VN") : "";
 
       return `
         <div
@@ -616,7 +744,9 @@ function renderStatCardsAndProgress(plan) {
 // =====================================================================
 function switchChartType(type) {
   currentChartType = type;
-  document.getElementById("chartTypeDoughnutBtn").setAttribute("aria-pressed", String(type === "doughnut"));
+  document
+    .getElementById("chartTypeDoughnutBtn")
+    .setAttribute("aria-pressed", String(type === "doughnut"));
   document.getElementById("chartTypeBarBtn").setAttribute("aria-pressed", String(type === "bar"));
   const doughnutBtn = document.getElementById("chartTypeDoughnutBtn");
   const barBtn = document.getElementById("chartTypeBarBtn");
@@ -648,7 +778,7 @@ function renderFinanceChart(plan) {
     0,
     (plan.items || [])
       .filter((i) => !i.payment)
-      .reduce((acc, item) => acc + (Number(item.price) || 0), 0)
+      .reduce((acc, item) => acc + (Number(item.price) || 0), 0),
   );
   const remainingFree = Math.max(0, plan.total_budget - (actualSpent + unspentPlanned));
 
@@ -656,11 +786,7 @@ function renderFinanceChart(plan) {
     financeChart = new Chart(canvas, {
       type: "doughnut",
       data: {
-        labels: [
-          "Đã chi",
-          "Chưa chi",
-          "Còn lại",
-        ],
+        labels: ["Đã chi", "Chưa chi", "Còn lại"],
         datasets: [
           {
             data: [actualSpent, unspentPlanned, remainingFree],
@@ -803,7 +929,7 @@ function renderSingleItemCard(item, sectionType) {
         <input
           type="checkbox"
           aria-label="Hoàn thành: ${escapeHtml(item.name)}"
-          ${isDone ? "checked" : ""} ${pendingPlanItems.has(item.id) ? 'disabled' : ''}
+          ${isDone ? "checked" : ""} ${pendingPlanItems.has(item.id) ? "disabled" : ""}
           onchange="toggleItemCompleted(${item.id}, this.checked)"
           class="mt-1 w-5 h-5 rounded accent-indigo-500 cursor-pointer flex-shrink-0"
           title="Tích để ghi chi theo giá của mục; bỏ tích để hủy khoản chi tự động"
@@ -830,13 +956,13 @@ function renderSingleItemCard(item, sectionType) {
         <span class="text-[11px] text-slate-500 sm:hidden">Ước tính:</span>
         <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 focus-within:border-indigo-500 rounded-xl px-2.5 py-1.5">
           <input
-            type="number"
+            type="text" inputmode="numeric" data-money
             aria-label="Chi phí dự kiến: ${escapeHtml(item.name)}"
-            value="${item.price}"
-            min="0"
-            max="2000000000"
-            step="1000"
-            ${pendingPlanItems.has(item.id) ? 'disabled' : ''}
+            value="${formatMoneyInputValue(item.price)}"
+            data-money-min="0"
+            data-money-max="2000000000"
+            oninput="formatMoneyInput(this)"
+            ${pendingPlanItems.has(item.id) ? "disabled" : ""}
             onchange="updateItemPrice(${item.id}, this.value)"
             class="w-24 bg-transparent text-right text-xs sm:text-sm font-semibold ${
               item.price > 0 ? "text-slate-700" : "text-slate-500"
@@ -845,8 +971,8 @@ function renderSingleItemCard(item, sectionType) {
           />
           <span class="text-[11px] font-semibold text-slate-500">₫</span>
         </div>
-        <button type="button" class="ui-button ${item.payment ? 'quiet' : 'soft'} small" onclick="recordPlanPayment(${item.id})" title="${item.payment ? `Đã ghi ${formatVND(item.payment.amount)}` : 'Ghi khoản thanh toán thực tế'}">${renderIcon(item.payment ? 'check' : 'receipt')} ${item.payment ? 'Đã ghi chi' : 'Ghi chi'}</button>
-        ${!item.payment ? `<details class="item-menu"><summary aria-label="Tùy chọn hạng mục ${escapeHtml(item.name)}">${renderIcon('ellipsis')}</summary><div><button type="button" onclick="openPlanReplacement(${item.id}); this.closest('details').open=false">${renderIcon('sparkles')} Đổi bằng AI</button></div></details>` : ''}
+        <button type="button" class="ui-button ${item.payment ? "quiet" : "soft"} small" onclick="recordPlanPayment(${item.id})" title="${item.payment ? `Đã ghi ${formatVND(item.payment.amount)}` : "Ghi khoản thanh toán thực tế"}">${renderIcon(item.payment ? "check" : "receipt")} ${item.payment ? "Đã ghi chi" : "Ghi chi"}</button>
+        ${!item.payment ? `<details class="item-menu"><summary aria-label="Tùy chọn hạng mục ${escapeHtml(item.name)}">${renderIcon("ellipsis")}</summary><div><button type="button" onclick="openPlanReplacement(${item.id}); this.closest('details').open=false">${renderIcon("sparkles")} Đổi bằng AI</button></div></details>` : ""}
       </div>
     </div>
   `;
@@ -860,10 +986,10 @@ async function toggleItemCompleted(itemId, isCompleted) {
 }
 
 async function updateItemPrice(itemId, rawValue) {
-  const newPrice = Number(rawValue);
+  const newPrice = parseMoneyInput(rawValue);
   if (!Number.isInteger(newPrice) || newPrice < 0 || newPrice > 2000000000) {
     renderInteractiveChecklist(currentPlan);
-    showToast('Giá phải là số nguyên từ 0 đến 2 tỷ đồng.', true);
+    showToast("Giá phải là số nguyên từ 0 đến 2 tỷ đồng.", true);
     return;
   }
   return savePlanItem(itemId, { price: newPrice });
@@ -872,7 +998,9 @@ async function updateItemPrice(itemId, rawValue) {
 function savePlanItem(itemId, payload) {
   if (pendingPlanItems.has(itemId)) return planWriteQueue;
   pendingPlanItems.add(itemId);
-  document.querySelectorAll(`#item-card-${itemId} input, #item-card-${itemId} button`).forEach(c => c.disabled = true);
+  document
+    .querySelectorAll(`#item-card-${itemId} input, #item-card-${itemId} button`)
+    .forEach((c) => (c.disabled = true));
   const operation = async () => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20000);
@@ -885,7 +1013,7 @@ function savePlanItem(itemId, payload) {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(typeof data.detail === 'string' ? data.detail : "Không thể lưu hạng mục");
+        throw new Error(typeof data.detail === "string" ? data.detail : "Không thể lưu hạng mục");
       }
 
       if (data.plan) {
@@ -893,12 +1021,19 @@ function savePlanItem(itemId, payload) {
         await window.refreshFinance?.();
       }
     } catch (err) {
-      showToast(err.name === 'AbortError' ? 'Chưa xác nhận được thay đổi. Hãy kết nối và làm mới kế hoạch.' : err.message, true);
+      showToast(
+        err.name === "AbortError"
+          ? "Chưa xác nhận được thay đổi. Hãy kết nối và làm mới kế hoạch."
+          : err.message,
+        true,
+      );
       if (currentPlan) renderInteractiveChecklist(currentPlan);
     } finally {
       clearTimeout(timer);
       pendingPlanItems.delete(itemId);
-      document.querySelectorAll(`#item-card-${itemId} input, #item-card-${itemId} button`).forEach(c => c.disabled = false);
+      document
+        .querySelectorAll(`#item-card-${itemId} input, #item-card-${itemId} button`)
+        .forEach((c) => (c.disabled = false));
     }
   };
   planWriteQueue = planWriteQueue.then(operation, operation);
@@ -910,7 +1045,10 @@ function applyUpdatedPlanFromServer(updatedPlan) {
   if (idx !== -1) {
     allPlans[idx] = updatedPlan;
   }
-  if (currentPlan && currentPlan.id !== updatedPlan.id) { renderPlansHistoryList(); return; }
+  if (currentPlan && currentPlan.id !== updatedPlan.id) {
+    renderPlansHistoryList();
+    return;
+  }
   currentPlan = updatedPlan;
   renderPlansHistoryList();
   renderStatCardsAndProgress(updatedPlan);
@@ -950,7 +1088,9 @@ async function deletePlanById(planId) {
 
     const deleted = await res.json();
     actionToast("Đã xóa kế hoạch", "Hoàn tác", async () => {
-      const response = await fetch(`/api/plans/trash/${deleted.undo_id}/restore`, { method: "POST" });
+      const response = await fetch(`/api/plans/trash/${deleted.undo_id}/restore`, {
+        method: "POST",
+      });
       if (!response.ok) throw new Error("Chưa khôi phục được kế hoạch");
       const restored = await response.json();
       await loadPlansFromDB(restored.id);

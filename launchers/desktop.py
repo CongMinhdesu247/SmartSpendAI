@@ -1,4 +1,5 @@
 """Desktop entry point with HTTP readiness checks and persistent startup logs."""
+
 import logging
 from logging.handlers import RotatingFileHandler
 import os
@@ -47,6 +48,7 @@ def wait_for_server_ready(timeout=15.0, server=None, thread=None):
 def show_startup_error(message):
     if os.name == "nt":
         import ctypes
+
         ctypes.windll.user32.MessageBoxW(None, message, "SmartSpend Pro — Lỗi khởi động", 0x10)
     else:
         print(message)
@@ -56,6 +58,7 @@ def open_window(url):
     try:
         import webview
         from backend.database import BASE_DIR
+
         webview.create_window("SmartSpend Pro", url, width=1360, height=860, min_size=(960, 640))
         webview.start(private_mode=False, storage_path=str(BASE_DIR / "webview_profile"))
         return True
@@ -72,6 +75,7 @@ def main(check_startup=False):
     try:
         from backend.database import load_config
         from backend.access import normalize_public_url
+
         cloud_url = normalize_public_url(load_config().get("cloud_url", ""))
         if cloud_url:
             if check_startup:
@@ -81,7 +85,10 @@ def main(check_startup=False):
             return 0
         import uvicorn
         from backend.api_server import app
-        server = uvicorn.Server(uvicorn.Config(app, host=HOST, port=PORT, log_level="warning", log_config=None))
+
+        server = uvicorn.Server(
+            uvicorn.Config(app, host=HOST, port=PORT, log_level="warning", log_config=None)
+        )
 
         def run_server():
             try:
@@ -107,7 +114,8 @@ def main(check_startup=False):
             return 1
         show_startup_error(
             "Chưa khởi động được SmartSpend. Kiểm tra cổng 8000 có bị chiếm, "
-            "kết nối database và bước nâng cấp schema.\n\nNhật ký: " + str(log_path))
+            "kết nối database và bước nâng cấp schema.\n\nNhật ký: " + str(log_path)
+        )
     finally:
         if server is not None:
             server.should_exit = True
