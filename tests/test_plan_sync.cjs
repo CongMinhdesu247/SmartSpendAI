@@ -76,6 +76,18 @@ ctx.renderInteractiveChecklist = (p) => rendered.push(p);
 ctx.showToast = (message) => toasts.push(message);
 vm.runInContext("currentPlan=fixture; allPlans=[fixture];", ctx);
 (async () => {
+  await assert.rejects(
+    () =>
+      ctx.readAIResponse({
+        status: 502,
+        json: async () => {
+          throw new SyntaxError("Unexpected token '<'");
+        },
+      }),
+    /HTTP 502/,
+  );
+  const aiError = { detail: "Chưa gọi được AI" };
+  assert.equal(await ctx.readAIResponse({ status: 502, json: async () => aiError }), aiError);
   const first = ctx.toggleItemCompleted(2, true);
   const duplicate = ctx.toggleItemCompleted(2, true);
   await Promise.all([first, duplicate]);

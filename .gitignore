@@ -12,6 +12,7 @@ smartspend_local.db
 .env
 .env.*
 !.env.cloud.example
+!.env.example
 webview_profile/
 build/
 dist/

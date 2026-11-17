@@ -436,6 +436,16 @@ function setQuickBudget(amount) {
   updateBudgetPreview(amount);
 }
 
+async function readAIResponse(response) {
+  try {
+    return await response.json();
+  } catch (_) {
+    throw new Error(
+      `Chưa nhận được phản hồi AI hợp lệ (HTTP ${response.status}). Hãy thử lại sau; nếu vẫn lỗi, báo người quản trị kiểm tra log AI và tunnel.`,
+    );
+  }
+}
+
 async function handleGeneratePlan(event) {
   event.preventDefault();
 
@@ -473,7 +483,7 @@ async function handleGeneratePlan(event) {
       }),
     });
 
-    const data = await res.json();
+    const data = await readAIResponse(res);
     if (!res.ok) {
       if (
         res.status === 400 &&

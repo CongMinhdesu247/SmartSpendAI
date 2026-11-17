@@ -1,4 +1,7 @@
 import os
+import json
+from types import SimpleNamespace
+from pydantic import ValidationError
 import unittest
 from unittest.mock import Mock, patch
 from backend import ai_service
@@ -7,6 +10,73 @@ from fastapi import HTTPException
 
 
 class SharedAITests(unittest.TestCase):
+    def test_weekly_plan_deadline_reaches_google_without_automatic_retries(self):
+        # Build an SDK HTTP request offline: its header is Google's actual deadline,
+        # not just the local socket timeout. No provider call or real key is used.
+        with ai_service.make_client("offline-test-not-a-real-key") as client:
+            request = client._api_client._build_request(
+                "POST", "models/fixture:generateContent", {}
+            )
+            self.assertEqual(request.headers["X-Server-Timeout"], "90")
+            self.assertEqual(client._api_client._http_options.retry_options.attempts, 1)
+
+    def test_provider_schema_is_simple_and_response_still_validated_locally(self):
+        valid = {
+            "title": "Đi chợ",
+            "estimated_cost": 10000,
+            "advice": "Mua đủ dùng",
+            "items": [
+                {
+                    "category": "grocery",
+                    "time_or_day": "Ngày 1",
+                    "name": "Rau",
+                    "details": "Rửa sạch",
+                    "price": 10000,
+                }
+            ],
+        }
+        client = Mock()
+        client.models.generate_content.return_value = SimpleNamespace(
+            parsed=None, text=json.dumps(valid)
+        )
+        with patch.dict(os.environ, {"GEMINI_MODEL": "owner-selected-model"}):
+            result = ai_service._call_gemini_with_fallback(client, "prompt", "system")
+        self.assertEqual(result.items[0].price, 10000)
+        config = client.models.generate_content.call_args.kwargs["config"]
+        schema = config.response_json_schema
+        self.assertIsNone(config.response_schema)
+        self.assertEqual(schema["properties"]["items"]["type"], "array")
+        self.assertIn("title", schema["required"])
+        self.assertEqual(
+            schema["$defs"]["AIPlanItemSchema"]["properties"]["category"]["enum"],
+            ["grocery", "daily_menu", "activity"],
+        )
+
+        def check_bounds(node):
+            if isinstance(node, dict):
+                self.assertFalse(
+                    set(node)
+                    & {"minLength", "maxLength", "minItems", "maxItems", "minimum", "maximum"}
+                )
+                for item in node.values():
+                    check_bounds(item)
+            elif isinstance(node, list):
+                for item in node:
+                    check_bounds(item)
+
+        check_bounds(schema)
+        for invalid in (
+            {**valid, "items": []},
+            {**valid, "items": valid["items"] * 201},
+            {**valid, "items": [{**valid["items"][0], "price": -1}]},
+            {**valid, "items": [{**valid["items"][0], "price": 2000000001}]},
+            {**valid, "items": [{**valid["items"][0], "name": "x" * 256}]},
+        ):
+            with self.assertRaises(ValidationError):
+                ai_service._parse_ai_response(
+                    SimpleNamespace(parsed=None, text=json.dumps(invalid))
+                )
+
     def test_configured_model_is_the_only_model_called(self):
         client = Mock()
         with (
@@ -32,7 +102,7 @@ class SharedAITests(unittest.TestCase):
         client.models.list.assert_not_called()
 
     def test_quota_timeout_and_auth_fail_without_switching_models(self):
-        for code in (429, 403, 503, None):
+        for code in (429, 403, 503, 504, None):
             error = RuntimeError("private-provider-response")
             error.code = code
             client = Mock()

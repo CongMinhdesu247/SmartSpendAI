@@ -1,7 +1,12 @@
 *
 !Dockerfile
+!Dockerfile.hp
+!scripts/
+!scripts/homeserver/
+!scripts/homeserver/**
 !requirements/
 !requirements/server.txt
+!requirements/homeserver.lock.txt
 !backend/
 !backend/**
 !frontend/

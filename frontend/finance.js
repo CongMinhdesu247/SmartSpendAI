@@ -1200,7 +1200,7 @@ function openPlanReplacement(itemId) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ preferences: form.get("replacePreferences") }),
       });
-      const data = await response.json();
+      const data = await readAIResponse(response);
       if (!response.ok) throw new Error(data.detail || "Chưa đổi được hạng mục");
       applyUpdatedPlanFromServer(data.plan);
       showToast("Đã đổi hạng mục");

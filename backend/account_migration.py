@@ -31,9 +31,10 @@ def upgrade(engine, owner_password_hash):
             text("SELECT 1 FROM spend_schema_versions WHERE version=:v"), {"v": VERSION}
         ).scalar():
             return {"status": "already_applied", "version": VERSION}
+        # Register all model modules before creating tables, including on an empty DB.
+        tables = ledger_tables()
         # create_all only creates missing tables; existing rows/IDs remain untouched.
         Base.metadata.create_all(conn)
-        tables = ledger_tables()
         for name in tables + ["spend_access_sessions"]:
             columns = {c["name"] for c in inspect(conn).get_columns(name)}
             if "user_id" not in columns:

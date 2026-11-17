@@ -16,11 +16,12 @@ logger = logging.getLogger(__name__)
 
 
 def make_client(api_key):
-    # Milliseconds. One provider attempt per model; at most three models below.
+    # Milliseconds; also sets Google's server deadline. Full weekly plans need
+    # more than 20 seconds. Keep one attempt and stay below the proxy deadline.
     return genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(
-            timeout=20000, retry_options=types.HttpRetryOptions(attempts=1)
+            timeout=90000, retry_options=types.HttpRetryOptions(attempts=1)
         ),
     )
 
@@ -75,6 +76,21 @@ PREFERRED_MODELS = [
 ]
 
 
+def _gemini_plan_schema():
+    # Gemini's constrained decoder rejects large nested length/range bounds.
+    # Keep shape/types/enums at the provider; validate all bounds locally below.
+    bounds = {"minLength", "maxLength", "minItems", "maxItems", "minimum", "maximum"}
+
+    def simplify(value):
+        if isinstance(value, dict):
+            return {key: simplify(item) for key, item in value.items() if key not in bounds}
+        if isinstance(value, list):
+            return [simplify(item) for item in value]
+        return value
+
+    return simplify(AIPlanOutput.model_json_schema())
+
+
 def _call_gemini_with_fallback(
     client: genai.Client,
     prompt: str,
@@ -88,7 +104,7 @@ def _call_gemini_with_fallback(
     config = types.GenerateContentConfig(
         system_instruction=system_instruction,
         response_mime_type="application/json",
-        response_schema=AIPlanOutput,
+        response_json_schema=_gemini_plan_schema(),
         temperature=0.4,
     )
 

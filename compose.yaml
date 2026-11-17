@@ -1,0 +1,76 @@
+name: smartspend-hp
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app: &app
+  platform: linux/amd64
+  image: smartspend-hp-app:${SMARTSPEND_IMAGE_TAG:-local}
+  build:
+    context: .
+    dockerfile: Dockerfile.hp
+  env_file:
+    - path: ${SMARTSPEND_ENV_FILE:-.env}
+  environment:
+    SMARTSPEND_CLOUD: "1"
+    DATABASE_URL: postgresql+psycopg2://smartspend:${SMARTSPEND_DB_PASSWORD}@db:5432/smartspend
+  logging: *logging
+  mem_limit: 768m
+  cpus: 1.5
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  db:
+    platform: linux/amd64
+    image: postgres:18-bookworm@sha256:ece55f7868da684e400f82f1030a050718adbdd65c23aa500c486f6e2950dc0f
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smartspend
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SMARTSPEND_DB_ADMIN_PASSWORD}
+      SMARTSPEND_DB_PASSWORD: ${SMARTSPEND_DB_PASSWORD}
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./scripts/homeserver/init-db.sh:/docker-entrypoint-initdb.d/10-smartspend.sh:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d smartspend"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    mem_limit: 512m
+    cpus: 1.0
+    shm_size: 128m
+    logging: *logging
+
+  web:
+    <<: *app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${SMARTSPEND_HTTP_PORT:-8092}:8000"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  migrate:
+    <<: *app
+    profiles: [tools]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: [python, scripts/homeserver/migrate.py, --apply]
+
+volumes:
+  postgres_data:

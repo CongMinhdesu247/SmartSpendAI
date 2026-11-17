@@ -1,4 +1,4 @@
-const CACHE_NAME = "smartspend-pro-v13";
+const CACHE_NAME = "smartspend-pro-v14";
 const STATIC_ASSETS = [
   "/",
   "/index.html",

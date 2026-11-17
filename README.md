@@ -1,5 +1,7 @@
 # SmartSpend Pro — Quản lý Tài chính, Lên Thực đơn Đi chợ & Kế hoạch Đi chơi bằng AI
 
+**Triển khai trên HP home server (web thứ ba):** xem [hướng dẫn từng bước](docs/hp-home-server.md). Bộ Compose này dùng PostgreSQL riêng, cổng loopback mặc định 8092 và không dùng `.env.cloud` của Render.
+
 Ứng dụng có thêm sổ thu/chi hằng ngày, tổng quan tháng, ngân sách theo danh mục, khoản định kỳ, mục tiêu tiết kiệm và hàng chờ giao dịch ngoại tuyến. Xem [hướng dẫn chức năng và nâng cấp dữ liệu](docs/finance-guide.md).
 
 Muốn dùng iPhone qua 4G/5G khi máy tính tắt: xem [cấu hình hosting và đăng nhập cloud](docs/iphone-cloud.md).
@@ -80,5 +82,5 @@ Tích hoàn thành hạng mục có giá sẽ tự ghi chi và cập nhật bi�
 
 `python -m pip install -r requirements/dev.txt`, sau đó chạy `python -m unittest discover -s tests -v` và các file `tests/test_*.cjs` bằng Node. GitHub Actions chạy cả PostgreSQL riêng để kiểm tra migration/RLS, các bài JavaScript và build Windows. Cấu hình PostgreSQL thử nghiệm cục bộ được mô tả trong [sổ riêng](docs/private-accounts.md).
 
-AI giới hạn 10 yêu cầu mỗi phút cho mỗi tài khoản và 2 yêu cầu đồng thời trên một server. Mỗi model chờ tối đa 20 giây, chỉ đổi sang model dự phòng khi nhận lỗi 404; không đổi model khi hết quota hoặc lỗi xác thực. Khi đặt `GEMINI_MODEL`, app chỉ gọi model đã chọn.
+AI giới hạn 10 yêu cầu mỗi phút cho mỗi tài khoản và 2 yêu cầu đồng thời trên một server. Mỗi lần gọi model có deadline 90 giây để đủ thời gian tạo thực đơn dài. Chỉ đổi sang model dự phòng khi nhận lỗi 404; không tự thử lại hoặc đổi model khi hết thời gian, hết quota hay lỗi xác thực. Khi đặt `GEMINI_MODEL`, app chỉ gọi model đã chọn.
 
