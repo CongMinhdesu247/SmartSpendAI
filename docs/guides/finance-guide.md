@@ -76,7 +76,7 @@ npm run build:css
 CSS Tailwind đã được biên dịch trong `frontend/tailwind.css`. Khi đổi các utility class trong HTML/JS, chạy lại `npm run build:css`. Chart.js 4.4.2 và SVG Lucide được lưu cục bộ kèm giấy phép; font có fallback hệ thống.
 
 ```powershell
-python tests/serve_preview.py
+python scripts/previews/serve_preview.py
 ```
 
 Lệnh này tạo backend thử nghiệm tại `http://127.0.0.1:8767`, với dữ liệu minh họa và cơ sở dữ liệu tạm riêng. Không đọc/sửa cấu hình hoặc dữ liệu thật. API AI trong kiểm tra tự động dùng phản hồi mô phỏng; chưa xác minh chất lượng đề xuất qua Gemini thật. Schema PostgreSQL được kiểm tra biên dịch, chưa chạy tích hợp trên một máy chủ PostgreSQL.

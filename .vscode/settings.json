@@ -18,6 +18,7 @@
   "explorer.fileNesting.enabled": true,
   "explorer.fileNesting.patterns": {
     "package.json": "package-lock.json",
-    "Dockerfile": ".dockerignore, render.yaml"
+    "Dockerfile": ".dockerignore, Dockerfile.hp, compose.yaml, render.yaml",
+    ".env.example": ".env.cloud.example"
   }
 }

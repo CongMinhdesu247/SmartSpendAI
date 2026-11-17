@@ -18,8 +18,8 @@ def package():
             ".env.example",
             "requirements/homeserver.lock.txt",
             "requirements/server.txt",
-            "docs/hp-home-server.md",
-            "docs/hp-verification.md",
+            "docs/guides/hp-home-server.md",
+            "docs/reports/hp-verification.md",
         )
     ]
     for folder in ("backend", "frontend", "scripts/homeserver"):

@@ -12,21 +12,24 @@ SmartSpendAI/
 ├── launchers/        # Các điểm khởi chạy
 │   ├── desktop.py    # Cửa sổ desktop / đầu vào đóng gói EXE
 │   └── browser.py    # Chạy bằng trình duyệt
-├── scripts/cloud/    # Công cụ quản trị cloud
-│   ├── configure.py  # Cấu hình desktop mở app HTTPS
-│   ├── prepare.py    # Tạo gói source và cấu hình cloud
-│   ├── migrate_data.py     # Chuyển dữ liệu SQLite sang cloud
-│   └── migrate_ledgers.py  # Nâng cấp PostgreSQL cho sổ riêng
+├── scripts/          # Công cụ hỗ trợ
+│   ├── cloud/        # Cấu hình, đóng gói và chuyển dữ liệu cloud
+│   ├── homeserver/   # Cấu hình, đóng gói, migration và backup HP
+│   └── previews/     # Server giao diện với dữ liệu thử riêng
 ├── requirements/     # Danh sách thư viện theo môi trường
 │   ├── desktop.txt
 │   ├── server.txt
+│   ├── homeserver.lock.txt
 │   └── dev.txt
 ├── config/           # Cấu hình công cụ phát triển
 │   ├── tailwind.cjs
 │   ├── prettier.json
 │   └── prettier.ignore
-├── tests/            # Kiểm thử, fixture và server preview
-├── docs/             # Hướng dẫn
+├── tests/            # Kiểm thử tự động, smoke test và fixture
+├── docs/
+│   ├── guides/       # Cài đặt, sử dụng và triển khai
+│   ├── reports/      # Kết quả xác minh và lịch sử sửa lỗi
+│   └── source-layout.md  # Bản đồ mã nguồn và lệnh phát triển
 ├── .github/          # CI
 ├── .vscode/          # Cách hiển thị cây thư mục trong IDE
 ├── run_app.bat       # Bấm để chạy ứng dụng
@@ -68,7 +71,7 @@ python -m scripts.cloud.migrate_data
 python -m scripts.cloud.migrate_ledgers
 ```
 
-Các lệnh migration mặc định kiểm tra trước; đọc [hướng dẫn cloud](iphone-cloud.md) và [sổ riêng](private-accounts.md) trước khi dùng `--apply`.
+Các lệnh migration mặc định kiểm tra trước; đọc [hướng dẫn cloud](guides/iphone-cloud.md) và [sổ riêng](guides/private-accounts.md) trước khi dùng `--apply`.
 
 Phát triển và kiểm thử:
 
@@ -85,10 +88,22 @@ npm run test:ui
 
 `npm run build:css` tạo lại `frontend/tailwind.css` bằng cấu hình trong `config/tailwind.cjs`. Black đọc `pyproject.toml`; Prettier đọc các file trong `config/` thông qua lệnh npm.
 
+Preview giao diện dùng dữ liệu thử riêng, chạy từ thư mục gốc:
+
+```powershell
+python scripts/previews/serve_preview.py
+python scripts/previews/serve_access_preview.py
+python scripts/previews/serve_accounts_preview.py
+python scripts/previews/serve_cashflow_preview.py
+python scripts/previews/serve_plan_sync_preview.py
+```
+
+Chỉ chạy một preview tại một thời điểm nếu trùng cổng. Hướng dẫn triển khai nằm trong `docs/guides/`; báo cáo cũ nằm trong `docs/reports/`. Dockerfile, Compose và Render giữ tại thư mục gốc để các lệnh triển khai hiện có tiếp tục hoạt động.
+
 ## Những file được ẩn trong Explorer
 
 `.vscode/settings.json` ẩn `node_modules/`, `build/`, `dist/`, `output/`, `.playwright-cli/`, `__pycache__/`, các file `.spec`, cấu hình riêng và database cục bộ. Chúng vẫn nằm trên đĩa và ứng dụng vẫn sử dụng cùng đường dẫn. File chạy sau build nằm tại `dist/SmartSpendPro.exe`.
 
 `package-lock.json` được xếp dưới `package.json`; cấu hình hosting được xếp dưới `Dockerfile`. Có thể đổi cách hiển thị trong `.vscode/settings.json`.
 
-Database `smartspend_local.db`, bản sao lưu, `config.json` và `.env.cloud` giữ nguyên vị trí để bảo toàn dữ liệu hiện tại. Hướng dẫn nghiệp vụ nằm trong [sổ thu/chi](finance-guide.md).
+Database `smartspend_local.db`, bản sao lưu, `config.json` và `.env.cloud` giữ nguyên vị trí để bảo toàn dữ liệu hiện tại. Hướng dẫn nghiệp vụ nằm trong [sổ thu/chi](guides/finance-guide.md).

@@ -49,7 +49,7 @@ Không đưa SQLite, bản sao lưu, `.env.cloud`, mật khẩu hoặc `config.j
 ## Kiểm tra trước khi bàn giao URL
 
 - Kiểm thử API: `python -m unittest discover -s tests -v`.
-- Kiểm tra browser bằng database tạm riêng: `python tests/serve_access_preview.py`. Mật khẩu trong script này chỉ là fixture thử nghiệm, không dùng cho hosting.
+- Kiểm tra browser bằng database tạm riêng: `python scripts/previews/serve_access_preview.py`. Mật khẩu trong script này chỉ là fixture thử nghiệm, không dùng cho hosting.
 - Kiểm tra đăng nhập đúng/sai, API khi chưa đăng nhập, đăng xuất và QR trên kích thước iPhone.
 - Kiểm tra URL triển khai thật và đăng nhập từ Safari/4G sau khi có hosting.
 

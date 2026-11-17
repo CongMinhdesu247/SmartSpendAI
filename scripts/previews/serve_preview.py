@@ -1,4 +1,4 @@
-"""Disposable browser QA server: python tests/serve_preview.py (port 8767)."""
+"""Disposable browser QA server: python scripts/previews/serve_preview.py (port 8767)."""
 
 import json
 import os
@@ -6,7 +6,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="SmartSpendQA-") as folder:

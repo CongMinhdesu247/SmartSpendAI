@@ -33,7 +33,7 @@ Nếu migration lỗi, transaction rollback về schema trước đó. Sau khi �
 ```powershell
 python -m unittest discover -s tests -v
 node tests/test_private_cache.cjs
-python tests/serve_accounts_preview.py
+python scripts/previews/serve_accounts_preview.py
 ```
 
 Preview dùng SQLite thử nghiệm trong `output/accounts-preview`, không đọc `.env.cloud` hoặc dữ liệu thật. Dữ liệu thử được giữ lại khi khởi động lại preview. Tài khoản fixture `chuso` có mật khẩu `Only-for-isolated-browser-tests-12345`, chỉ dùng cho preview. Preview không gắn khóa AI thật.

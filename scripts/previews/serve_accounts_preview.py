@@ -5,10 +5,10 @@ import sys
 from contextlib import nullcontext
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 if __name__ == "__main__":
-    preview_dir = Path(__file__).resolve().parents[1] / "output" / "accounts-preview"
+    preview_dir = Path(__file__).resolve().parents[2] / "output" / "accounts-preview"
     preview_dir.mkdir(parents=True, exist_ok=True)
     with nullcontext(str(preview_dir)) as folder:
         os.environ.update(

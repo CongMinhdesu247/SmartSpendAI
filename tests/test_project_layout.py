@@ -1,15 +1,47 @@
 """Verify relocated tools retain project paths and produce a usable source ZIP."""
 
 import tempfile
+import tarfile
 import unittest
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts.cloud import prepare
+from scripts.homeserver import package as homeserver
 
 
 class ProjectLayoutTests(unittest.TestCase):
+    def test_homeserver_bundle_contains_organized_docs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in (
+                "Dockerfile.hp",
+                "compose.yaml",
+                ".dockerignore",
+                ".env.example",
+                "requirements/homeserver.lock.txt",
+                "requirements/server.txt",
+                "docs/guides/hp-home-server.md",
+                "docs/reports/hp-verification.md",
+                "backend/__init__.py",
+                "frontend/index.html",
+                "scripts/homeserver/configure.py",
+            ):
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("fixture", encoding="utf-8")
+            (root / ".env").write_text("private-fixture", encoding="utf-8")
+            with patch.object(homeserver, "ROOT", root), patch("builtins.print"):
+                homeserver.package()
+            with tarfile.open(root / "output/deployment/SmartSpendAI-hp.tar.gz") as bundle:
+                names = bundle.getnames()
+                self.assertIn("docs/guides/hp-home-server.md", names)
+                self.assertIn("docs/reports/hp-verification.md", names)
+                self.assertIn("backend/__init__.py", names)
+                self.assertIn("scripts/homeserver/configure.py", names)
+                self.assertNotIn(".env", names)
+
     def test_cloud_paths_still_point_to_project_root(self):
         root = Path(__file__).resolve().parents[1]
         self.assertEqual(prepare.ROOT, root)
