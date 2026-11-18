@@ -1,12 +1,14 @@
 {
-  "name": "SmartSpend Pro - Quản lý Chi tiêu & Thực đơn AI",
+  "name": "SmartSpend Pro — Quản lý Tài chính & Kế hoạch AI",
   "short_name": "SmartSpend",
-  "description": "Ứng dụng quản lý tài chính, lên thực đơn đi chợ và kế hoạch đi chơi bằng AI đồng bộ Supabase PostgreSQL.",
+  "description": "Sổ chi tiêu thông minh, chấm điểm sức khỏe dòng tiền, cố vấn tài chính AI và lập thực đơn đi chợ gộp.",
+  "lang": "vi",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f4f7fc",
   "theme_color": "#f4f7fc",
   "orientation": "portrait-primary",
+  "categories": ["finance", "productivity", "lifestyle"],
   "icons": [
     {
       "src": "/icons/smartspend-192.png",
@@ -18,7 +20,21 @@
       "src": "/icons/smartspend-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Sổ chi tiêu tháng",
+      "short_name": "Sổ chi tiêu",
+      "url": "/?view=spending",
+      "icons": [{ "src": "/icons/smartspend-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Kế hoạch & Thực đơn AI",
+      "short_name": "Kế hoạch AI",
+      "url": "/?view=plans",
+      "icons": [{ "src": "/icons/smartspend-192.png", "sizes": "192x192" }]
     }
   ],
   "id": "/"

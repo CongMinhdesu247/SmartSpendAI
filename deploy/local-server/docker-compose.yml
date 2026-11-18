@@ -1,0 +1,112 @@
+# =====================================================================
+# SmartSpend Pro — Docker Compose chuẩn cấu trúc Local Server (SERVER_CONTEXT.md)
+# Đặt file này tại: <APPS_ROOT>/SmartSpendAI/docker-compose.yml
+# Cây thư mục chuẩn:
+#   SmartSpendAI/
+#   ├── source/               (Mã nguồn đồng bộ từ PC lên)
+#   ├── .env                  (Biến môi trường production, chmod 600)
+#   ├── data/
+#   │   ├── postgres/         (Dữ liệu PostgreSQL 18 bền vững ngoài container)
+#   │   └── backups/          (Các bản sao lưu pg_dump tự động)
+#   └── docker-compose.yml    (File này)
+# =====================================================================
+name: ${SMARTSPEND_COMPOSE_PROJECT:-smartspend-hp}
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app: &app
+  platform: linux/amd64
+  image: smartspend-hp-app:${SMARTSPEND_IMAGE_TAG:-local}
+  build:
+    context: ./source
+    dockerfile: Dockerfile.hp
+  env_file:
+    - path: ./.env
+  environment:
+    SMARTSPEND_CLOUD: "1"
+    SMARTSPEND_TRUST_PROXY: "${SMARTSPEND_TRUST_PROXY:-1}"
+    SMARTSPEND_TRUSTED_HEADER: "${SMARTSPEND_TRUSTED_HEADER:-auto}"
+    DATABASE_URL: postgresql+psycopg2://smartspend:${SMARTSPEND_DB_PASSWORD}@db:5432/smartspend
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop:
+    - ALL
+  logging: *logging
+  mem_limit: 768m
+  cpus: 1.5
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  db:
+    platform: linux/amd64
+    image: postgres:18-bookworm@sha256:ece55f7868da684e400f82f1030a050718adbdd65c23aa500c486f6e2950dc0f
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smartspend
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SMARTSPEND_DB_ADMIN_PASSWORD}
+      SMARTSPEND_DB_PASSWORD: ${SMARTSPEND_DB_PASSWORD}
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - ./data/postgres:/var/lib/postgresql
+      - ./source/scripts/homeserver/init-db.sh:/docker-entrypoint-initdb.d/10-smartspend.sh:ro
+    networks:
+      - smartspend_db_internal
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d smartspend"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    mem_limit: 512m
+    cpus: 1.0
+    shm_size: 128m
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  web:
+    <<: *app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - smartspend_db_internal
+      - smartspend_edge
+    ports:
+      - "127.0.0.1:${SMARTSPEND_HTTP_PORT:-8092}:8000"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  migrate:
+    <<: *app
+    profiles: [tools]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - smartspend_db_internal
+    command: [python, scripts/homeserver/migrate.py, --apply]
+
+networks:
+  smartspend_db_internal:
+    driver: bridge
+    internal: true
+  smartspend_edge:
+    driver: bridge
+  # Tùy chọn: Nếu _proxy chạy trong Docker network chung (VD: proxy_net), bỏ comment dưới đây
+  # và thêm `- proxy_net` vào `web.networks`:
+  # proxy_net:
+  #   external: true

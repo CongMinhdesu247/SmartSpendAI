@@ -1,4 +1,4 @@
-const CACHE_NAME = "smartspend-pro-v14";
+const CACHE_NAME = "smartspend-pro-v21";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -38,7 +38,6 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  // Với các API call (/api/...), luôn gọi trực tiếp tới server để lấy dữ liệu thời gian thực từ Supabase
   const url = new URL(event.request.url);
   if (
     event.request.method !== "GET" ||
@@ -57,7 +56,15 @@ self.addEventListener("fetch", (event) => {
           STATIC_ASSETS.includes(url.pathname)
         ) {
           const copy = response.clone();
-          event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)));
+          const canonicalCopy = response.clone();
+          event.waitUntil(
+            caches.open(CACHE_NAME).then(async (cache) => {
+              await cache.put(event.request, copy);
+              if (url.search) {
+                await cache.put(url.pathname, canonicalCopy);
+              }
+            }),
+          );
         }
         if (
           event.request.mode === "navigate" &&
@@ -67,9 +74,16 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       })
-      .catch(
-        async () =>
-          (await caches.match(event.request)) || new Response("Ngoại tuyến", { status: 503 }),
-      ),
+      .catch(async () => {
+        const exact = await caches.match(event.request);
+        if (exact) return exact;
+        const ignored = await caches.match(url.pathname, { ignoreSearch: true });
+        if (ignored) return ignored;
+        if (event.request.mode === "navigate") {
+          const home = await caches.match("/");
+          if (home) return home;
+        }
+        return new Response("Ngoại tuyến", { status: 503 });
+      }),
   );
 });

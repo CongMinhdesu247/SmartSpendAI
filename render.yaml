@@ -9,6 +9,10 @@ services:
     envVars:
       - key: SMARTSPEND_CLOUD
         value: "1"
+      - key: SMARTSPEND_ALLOW_REGISTRATION
+        value: "0"
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
       - key: SMARTSPEND_SESSION_SECRET
         generateValue: true
       - key: SMARTSPEND_PASSWORD_HASH
@@ -18,4 +22,4 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-3.6-flash
+        value: ""

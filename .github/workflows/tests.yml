@@ -32,6 +32,7 @@ jobs:
       - run: npm ci
       - run: npm run format:check
       - run: npm run build:css
+      - run: git diff --exit-code frontend/tailwind.css
       - run: npm run test:ui
   windows-build:
     runs-on: windows-latest

@@ -1,18 +1,25 @@
 {
   "prettier.configPath": "config/prettier.json",
   "prettier.ignorePath": "config/prettier.ignore",
+  "[html]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
   "files.exclude": {
     "**/__pycache__": true,
     "**/*.pyc": true,
     "node_modules": true,
     "build": true,
     "dist": true,
-    "output": true,
     ".playwright-cli": true,
-    ".env.cloud": true,
-    "config.json": true,
-    "smartspend_local*.db": true,
-    "smartspend_local*.db-*": true,
     "*.spec": true
   },
   "explorer.fileNesting.enabled": true,

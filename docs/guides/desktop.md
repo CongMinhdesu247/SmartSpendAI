@@ -1,4 +1,4 @@
-# Chạy trên Windows
+# Chạy trên Windows Desktop
 
 Các lệnh dưới đây chạy tại thư mục gốc dự án.
 
@@ -8,40 +8,42 @@ Các lệnh dưới đây chạy tại thư mục gốc dự án.
 python -m pip install -r requirements/desktop.txt
 ```
 
-Nhấn đúp `run_app.bat` để mở cửa sổ desktop, hoặc chạy bằng trình duyệt:
+Nhấn đúp `run_app.bat` để mở cửa sổ Desktop, hoặc mở trên trình duyệt:
 
 ```powershell
 python -m launchers.browser
 ```
 
-Trình duyệt mở tại `http://127.0.0.1:8000`.
+Ứng dụng mặc định chỉ lắng nghe an toàn tại `http://127.0.0.1:8000` (không mở cổng ra mạng Wi-Fi công cộng).
 
-## Cấu hình
+Nếu bạn đã cấu hình địa chỉ Cloud HTTPS nhưng muốn tạm mở lại bản cục bộ trên máy tính, chạy:
 
-Trong **Cài đặt** của ứng dụng:
+```powershell
+python -m launchers.desktop --local
+# Hoặc xóa địa chỉ Cloud đã lưu:
+python -m launchers.desktop --reset-cloud
+```
 
-1. Nhập Gemini API Key lấy từ [Google AI Studio](https://aistudio.google.com/app/apikey).
-2. Dùng SQLite cục bộ hoặc nhập URI PostgreSQL. Với Supabase, lấy URI tại **Connect** trong dashboard.
-3. Chuẩn bị schema và quyền truy cập theo [hướng dẫn sổ riêng](private-accounts.md) trước khi kết nối PostgreSQL, kể cả trên desktop.
+## Cấu hình AI & Nguồn dữ liệu
 
-Ứng dụng kiểm tra kết nối trước khi lưu; nếu lỗi, cấu hình cũ được giữ nguyên. Khi PostgreSQL mất kết nối, ứng dụng yêu cầu kết nối lại và giữ nguồn dữ liệu đã chọn.
+Mở tab **Tài khoản → Cài đặt AI & Nguồn dữ liệu**:
 
-AI giới hạn 10 yêu cầu/phút/tài khoản, 2 yêu cầu đồng thời/server và deadline 90 giây mỗi lần gọi model. Model dự phòng chỉ dùng khi nhận lỗi 404. Khi đặt `GEMINI_MODEL`, ứng dụng chỉ gọi model đó.
+1. Nhập **Gemini API Key** lấy từ [Google AI Studio](https://aistudio.google.com/app/apikey).
+2. Chọn để trống ô PostgreSQL nếu muốn lưu bằng SQLite trên máy, hoặc nhập URI PostgreSQL (nhớ chạy bước nâng cấp [sổ riêng](private-accounts.md) trước khi nối PostgreSQL).
+3. Tùy chọn bật **Cho phép điện thoại cùng mạng Wi-Fi truy cập trực tiếp** nếu muốn dùng trên iPhone trong mạng gia đình (cần khởi động lại ứng dụng sau khi lưu).
 
-## Dùng iPhone trong cùng Wi-Fi
+## Dùng trên iPhone trong cùng Wi-Fi
 
-1. Giữ máy tính chạy ứng dụng và kết nối iPhone cùng mạng.
-2. Nhấn **iPhone PWA**, quét QR và mở bằng Safari.
-3. Chọn **Chia sẻ → Thêm vào Màn hình chính**.
+1. Bật quyền mạng Wi-Fi nội bộ trong **Cài đặt AI & Nguồn dữ liệu** và mở lại ứng dụng.
+2. Vào **Tài khoản → Cài ứng dụng trên iPhone (PWA)**, quét mã QR bằng Camera iPhone.
+3. Trong Safari, nhấn **Chia sẻ → Thêm vào Màn hình chính**.
 
-Muốn dùng qua 4G/5G khi máy tính tắt, xem [hướng dẫn cloud](iphone-cloud.md). Quy tắc ghi chi từ kế hoạch được mô tả trong [hướng dẫn tài chính](finance-guide.md).
+Muốn dùng qua 4G/5G khi máy tính tắt, xem [hướng dẫn Cloud](iphone-cloud.md) hoặc [Home Server](hp-home-server.md).
 
 ## Đóng gói EXE
-
-Sau khi cài thư viện desktop, nhấn đúp `build_exe.bat`. Kết quả ở `dist/SmartSpendPro.exe`. Script dừng nếu thiếu thư viện hoặc PyInstaller lỗi. Chạy tự động bằng:
 
 ```powershell
 .\build_exe.bat --no-pause
 ```
 
-Desktop kiểm tra HTTP `/healthz` trước khi mở cửa sổ. Nhật ký lỗi ở `%LOCALAPPDATA%\SmartSpendPro\logs\desktop.log`. Kiểm tra bản EXE mà không mở cửa sổ bằng `SmartSpendPro.exe --check-startup`; mã thoát `0` là thành công.
+File thực thi nằm tại `dist\SmartSpendPro.exe`. Khi cài đặt vào thư mục không có quyền ghi (như `C:\Program Files`), ứng dụng tự động lưu dữ liệu và hồ sơ trình duyệt vào `%LOCALAPPDATA%\SmartSpendPro`. Nhật ký khởi động nằm tại `%LOCALAPPDATA%\SmartSpendPro\logs\desktop.log`.

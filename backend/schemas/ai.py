@@ -69,3 +69,37 @@ class AIPlanOutput(BaseModel):
     items: List[AIPlanItemSchema] = Field(
         min_length=1, max_length=200, description="Danh sách đầy đủ các hạng mục của kế hoạch."
     )
+
+
+class AIMonthlyCoachingOutput(BaseModel):
+    headline: str = Field(
+        min_length=1,
+        max_length=180,
+        description="Nhận định ngắn gọn, sắc sảo về tình hình tài chính tháng này.",
+    )
+    summary: str = Field(
+        min_length=1,
+        max_length=1200,
+        description="Đánh giá tổng quan dòng tiền thu - chi - tiết kiệm và nhịp độ ngân sách.",
+    )
+    strengths: List[str] = Field(
+        default_factory=list,
+        max_length=5,
+        description="Các điểm sáng tài chính người dùng đang làm tốt (1-3 ý ngắn gọn).",
+    )
+    warnings: List[str] = Field(
+        default_factory=list,
+        max_length=5,
+        description="Các điểm rò rỉ chi tiêu hoặc rủi ro vượt hạn mức cần lưu ý (0-3 ý).",
+    )
+    action_items: List[str] = Field(
+        min_length=1,
+        max_length=5,
+        description="3 hành động thực tế, cụ thể bằng VNĐ để tối ưu chi tiêu những ngày còn lại.",
+    )
+    suggested_daily_cap: int = Field(
+        ge=0,
+        le=2000000000,
+        description="Hạn mức chi tiêu khuyến nghị mỗi ngày cho phần còn lại của tháng (VNĐ).",
+    )
+

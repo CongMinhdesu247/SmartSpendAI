@@ -1,83 +1,59 @@
 # Bản đồ mã nguồn
 
-## Cây thư mục để làm việc
+## Cây thư mục dự án
 
 ```text
 SmartSpendAI/
-├── backend/          # API, nghiệp vụ và database
-│   └── schemas/      # Validation: kế hoạch, tài chính, AI, tài khoản
-├── frontend/         # HTML, CSS, JavaScript và PWA
-│   ├── icons/        # Biểu tượng ứng dụng
-│   └── vendor/       # Thư viện bên ngoài và giấy phép
-├── launchers/        # Các điểm khởi chạy
-│   ├── desktop.py    # Cửa sổ desktop / đầu vào đóng gói EXE
-│   └── browser.py    # Chạy bằng trình duyệt
-├── scripts/          # Công cụ hỗ trợ
-│   ├── cloud/        # Cấu hình, đóng gói và chuyển dữ liệu cloud
-│   ├── homeserver/   # Cấu hình, đóng gói, migration và backup HP
-│   └── previews/     # Server giao diện với dữ liệu thử riêng
-├── requirements/     # Danh sách thư viện theo môi trường
-│   ├── desktop.txt
-│   ├── server.txt
-│   ├── homeserver.lock.txt
-│   └── dev.txt
-├── config/           # Cấu hình công cụ phát triển
-│   ├── tailwind.cjs
-│   ├── prettier.json
-│   └── prettier.ignore
-├── tests/            # Kiểm thử tự động, smoke test và fixture
-├── docs/
-│   ├── guides/       # Cài đặt, sử dụng và triển khai
-│   ├── reports/      # Kết quả xác minh và lịch sử sửa lỗi
-│   └── source-layout.md  # Bản đồ mã nguồn và lệnh phát triển
-├── .github/          # CI
-├── .vscode/          # Cách hiển thị cây thư mục trong IDE
-├── run_app.bat       # Bấm để chạy ứng dụng
-└── build_exe.bat     # Bấm để đóng gói EXE
+├── backend/                  # API, nghiệp vụ, bảo mật và kết nối dữ liệu
+│   ├── routers/              # Tách bạch toàn bộ HTTP routers theo miền nghiệp vụ
+│   │   ├── auth.py           # Đăng nhập, đăng ký mã mời, đổi mật khẩu, giới hạn phiên
+│   │   ├── finance.py        # Sổ thu/chi, Xu hướng 6 tháng, AI Coach, Định kỳ, Mục tiêu, Sao lưu v2
+│   │   ├── plans.py          # Kế hoạch AI & Thủ công, đồng bộ checklist hai chiều, Thùng rác
+│   │   └── system.py         # Cấu hình hệ thống, LAN IP, mã QR, /healthz kiểm tra kết nối DB
+│   ├── services/             # Tầng dịch vụ nghiệp vụ thuần khiết (tách khỏi HTTP router)
+│   │   ├── insights.py       # Chấm điểm sức khỏe 4 trụ cột, dự báo cuối tháng, xu hướng 6 tháng
+│   │   └── backup.py         # Xuất & Khôi phục toàn diện JSON v2 chống trùng lặp
+│   ├── schemas/              # Validation Pydantic nghiêm ngặt (access, ai, finance, plans)
+│   ├── access.py             # Middleware bảo mật, Rate Limiter nhận diện Proxy, CSRF/Host/Body & CSP
+│   ├── auth_models.py        # Model tài khoản & phiên đăng nhập
+│   ├── finance_models.py     # Model sổ tài chính & lưu trữ
+│   ├── models.py             # Model kế hoạch & hạng mục
+│   ├── tenancy.py            # Cô lập sổ riêng ở cả tầng ORM và PostgreSQL RLS
+│   ├── ai_service.py         # Gemini AI lập kế hoạch & Cố vấn tài chính tháng
+│   └── database.py           # Quản lý kết nối PostgreSQL / SQLite & load_all_models()
+├── frontend/                 # HTML, CSS, JavaScript (CSP-strict, không inline handler) & PWA
+│   ├── icons/                # Biểu tượng PWA
+│   └── vendor/               # Chart.js tự lưu trữ cục bộ
+├── deploy/                   # Cấu hình hạ tầng triển khai chuẩn hóa
+│   └── local-server/         # Chuẩn SERVER_CONTEXT.md: docker-compose.yml (./data/) & sites/ Proxy
+├── scripts/                  # Công cụ vận hành tự động
+│   ├── cloud/                # Chuẩn bị gói nguồn, cấu hình và chuyển dữ liệu Cloud
+│   ├── homeserver/           # update.sh, deploy_update.ps1, backup.sh, configure.py, migrate.py
+│   └── previews/             # Server giao diện với dữ liệu mẫu cô lập
+├── launchers/                # Điểm khởi chạy ứng dụng (desktop.py, browser.py)
+├── requirements/             # Danh sách thư viện theo môi trường (server, desktop, dev, lock)
+├── config/                   # Cấu hình Tailwind CSS & Prettier
+├── tests/                    # Kiểm thử tự động Python & Node.js
+├── docs/                     # Hướng dẫn sử dụng, triển khai và báo cáo kiểm toán kỹ thuật
+└── SERVER_CONTEXT.md         # Hồ sơ cấu trúc Local Server & hướng dẫn cập nhật nhanh
 ```
 
-## Tìm nơi sửa chức năng
+## Tìm nơi chỉnh sửa nhanh
 
-| Công việc | File chính |
+| Chức năng | File chính |
 | --- | --- |
-| API kế hoạch, sao chép, khôi phục | `backend/api_server.py` |
-| Validation của dữ liệu | `backend/schemas/` |
-| Tích hoàn thành và tự ghi chi | `backend/plan_payments.py`, `frontend/app.js` |
-| Giao dịch và báo cáo tháng | `backend/finance_api.py`, `frontend/finance.js` |
-| Prompt và gọi AI | `backend/ai_service.py` |
-| Giao diện | `frontend/index.html`, `frontend/style.css` |
-| Đăng nhập và sổ riêng | `backend/access.py`, `backend/tenancy.py`, `frontend/auth.js` |
-| Kết nối và cấu hình dữ liệu | `backend/database.py` |
-| Cache PWA | `frontend/sw.js` |
+| Đăng nhập, đăng ký mã mời, đổi mật khẩu, bảo vệ CSRF/Host/HSTS | `backend/access.py`, `backend/routers/auth.py`, `frontend/auth.js` |
+| Sổ thu/chi, Điểm sức khỏe, Lịch nhiệt độ, AI Coach, Sao lưu JSON v2 | `backend/routers/finance.py`, `frontend/finance.js` |
+| Kế hoạch AI & Thủ công, Chế độ đi chợ, Chép văn bản gửi Zalo | `backend/routers/plans.py`, `backend/ai_service.py`, `frontend/app.js` |
+| Cấu hình hệ thống, LAN IP, mã QR, `/healthz` kiểm tra DB | `backend/routers/system.py` |
+| Triển khai & Cập nhật Local Server không mất dữ liệu | `deploy/local-server/`, `scripts/homeserver/update.sh`, `SERVER_CONTEXT.md` |
 
-Frontend tải `auth.js`, `app.js`, rồi `finance.js`. Các schema được nhập lại qua module API cũ để các import hiện có vẫn hoạt động.
-
-## Chạy và kiểm tra
-
-Chạy desktop bằng `run_app.bat`, đóng gói bằng `build_exe.bat`. Các lệnh Python chạy từ thư mục gốc:
-
-```powershell
-python -m pip install -r requirements/desktop.txt
-python -m launchers.desktop
-python -m launchers.browser
-```
-
-Công cụ cloud:
-
-```powershell
-python -m scripts.cloud.configure
-python -m scripts.cloud.prepare
-python -m scripts.cloud.migrate_data
-python -m scripts.cloud.migrate_ledgers
-```
-
-Các lệnh migration mặc định kiểm tra trước; đọc [hướng dẫn cloud](guides/iphone-cloud.md) và [sổ riêng](guides/private-accounts.md) trước khi dùng `--apply`.
-
-Phát triển và kiểm thử:
+## Lệnh phát triển & kiểm tra
 
 ```powershell
 python -m pip install -r requirements/dev.txt
 npm ci
+npm run build:css
 python -m black .
 npm run format
 python -m black --check .
@@ -86,24 +62,4 @@ python -m unittest discover -s tests -v
 npm run test:ui
 ```
 
-`npm run build:css` tạo lại `frontend/tailwind.css` bằng cấu hình trong `config/tailwind.cjs`. Black đọc `pyproject.toml`; Prettier đọc các file trong `config/` thông qua lệnh npm.
-
-Preview giao diện dùng dữ liệu thử riêng, chạy từ thư mục gốc:
-
-```powershell
-python scripts/previews/serve_preview.py
-python scripts/previews/serve_access_preview.py
-python scripts/previews/serve_accounts_preview.py
-python scripts/previews/serve_cashflow_preview.py
-python scripts/previews/serve_plan_sync_preview.py
-```
-
-Chỉ chạy một preview tại một thời điểm nếu trùng cổng. Hướng dẫn triển khai nằm trong `docs/guides/`; báo cáo cũ nằm trong `docs/reports/`. Dockerfile, Compose và Render giữ tại thư mục gốc để các lệnh triển khai hiện có tiếp tục hoạt động.
-
-## Những file được ẩn trong Explorer
-
-`.vscode/settings.json` ẩn `node_modules/`, `build/`, `dist/`, `output/`, `.playwright-cli/`, `__pycache__/`, các file `.spec`, cấu hình riêng và database cục bộ. Chúng vẫn nằm trên đĩa và ứng dụng vẫn sử dụng cùng đường dẫn. File chạy sau build nằm tại `dist/SmartSpendPro.exe`.
-
-`package-lock.json` được xếp dưới `package.json`; cấu hình hosting được xếp dưới `Dockerfile`. Có thể đổi cách hiển thị trong `.vscode/settings.json`.
-
-Database `smartspend_local.db`, bản sao lưu, `config.json` và `.env.cloud` giữ nguyên vị trí để bảo toàn dữ liệu hiện tại. Hướng dẫn nghiệp vụ nằm trong [sổ thu/chi](guides/finance-guide.md).
+> **Lưu ý về CSP:** Dự án áp dụng `Content-Security-Policy: script-src 'self'; object-src 'none'` nghiêm ngặt (không dùng `'unsafe-inline'`). Mọi tương tác giao diện đều gắn qua `data-action` / `data-f-action` và `addEventListener`, tuyệt đối không viết inline `onclick` hay `onsubmit` trong HTML/JS.

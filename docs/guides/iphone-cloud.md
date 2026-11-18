@@ -23,8 +23,8 @@ Nếu triển khai thủ công:
 3. Thêm biến môi trường từ file **`.env.cloud` trên máy của bạn** trong bảng điều khiển hosting. Không đưa file này lên repository và không dán nội dung vào chat.
 4. Render tự cấp `RENDER_EXTERNAL_URL`. Với provider khác, đặt `SMARTSPEND_PUBLIC_URL` bằng địa chỉ HTTPS chính xác của app.
 5. Chờ deployment thành công. `/healthz` phải trả `{"status":"ok"}`; API `/api/finance/categories` khi chưa đăng nhập phải trả `401`.
-6. Mở URL bằng Safari trên iPhone. Mật khẩu nằm trong `output/deployment/login-private.txt` trên máy của bạn. Có thể lưu vào trình quản lý mật khẩu cá nhân.
-7. Trong Safari, dùng Chia sẻ → Thêm vào Màn hình chính. Dùng cùng địa chỉ này qua Wi-Fi và 4G/5G. Nếu bản cài màn hình chính có phiên riêng, đăng nhập lại tại đó.
+6. Mở URL bằng Safari trên iPhone và đăng nhập với tài khoản `chuso` cùng mật khẩu đã tạo khi chạy `python -m scripts.cloud.prepare --prompt-password` (nên lưu vào trình quản lý mật khẩu cá nhân).
+7. Trong Safari, dùng Chia sẻ → Thêm vào Màn hình chính. Dùng cùng địa chỉ này qua Wi-Fi và 4G/5G. Sau khi đã đăng nhập ít nhất một lần, ứng dụng vẫn mở được khi ngoại tuyến để xem lại dữ liệu tháng và ghi giao dịch chờ đồng bộ.
 
 [Render hỗ trợ HTTPS và có các giới hạn cho Free Web Service](https://render.com/docs/free): app có thể ngủ sau 15 phút không dùng và cần khoảng một phút để khởi động lại. Dữ liệu không nằm trên filesystem tạm của Render; app dùng PostgreSQL đã cấu hình. Chưa triển khai đồng nghĩa chưa thể xác nhận việc mở từ mạng di động thật.
 

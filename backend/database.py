@@ -1,30 +1,44 @@
 import json
+import logging
 import os
 import sys
-import logging
 import threading
 from contextlib import closing
 from pathlib import Path
 from typing import Any, Dict, Generator, Optional
 from urllib.parse import quote, unquote
 
+from fastapi import HTTPException, Request
 from sqlalchemy import create_engine, event
-from sqlalchemy.engine import Engine
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-from fastapi import Request, HTTPException
-from backend.tenancy import LedgerSession, OWNER_ID
 
-# Đường dẫn thư mục gốc của dự án (hỗ trợ cả khi chạy code trực tiếp lẫn khi đóng gói PyInstaller .exe)
-if getattr(sys, "frozen", False):
-    BASE_DIR = Path(sys.executable).resolve().parent
-else:
-    BASE_DIR = Path(__file__).resolve().parent.parent
+from backend.tenancy import OWNER_ID, LedgerSession
 
-if os.environ.get("SMARTSPEND_DATA_DIR"):
-    BASE_DIR = Path(os.environ["SMARTSPEND_DATA_DIR"]).resolve()
-    BASE_DIR.mkdir(parents=True, exist_ok=True)
 
+def _resolve_base_dir() -> Path:
+    if os.environ.get("SMARTSPEND_DATA_DIR"):
+        custom = Path(os.environ["SMARTSPEND_DATA_DIR"]).resolve()
+        custom.mkdir(parents=True, exist_ok=True)
+        return custom
+
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        # Preserve portable mode if data already lives beside the EXE and is writable;
+        # otherwise use %LOCALAPPDATA%\SmartSpendPro so Program Files installs never fail.
+        has_portable_files = (exe_dir / "config.json").exists() or (
+            exe_dir / "smartspend_local.db"
+        ).exists()
+        if has_portable_files and os.access(exe_dir, os.W_OK):
+            return exe_dir
+        appdata = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "SmartSpendPro"
+        appdata.mkdir(parents=True, exist_ok=True)
+        return appdata
+
+    return Path(__file__).resolve().parent.parent
+
+
+BASE_DIR = _resolve_base_dir()
 CONFIG_FILE = BASE_DIR / "config.json"
 DEFAULT_SQLITE_URL = f"sqlite:///{(BASE_DIR / 'smartspend_local.db').as_posix()}"
 
@@ -35,12 +49,19 @@ class Base(DeclarativeBase):
     pass
 
 
+def load_all_models() -> None:
+    """Đăng ký tường minh toàn bộ các module ORM model vào Base.metadata."""
+    from backend import auth_models, finance_models, models  # noqa: F401
+
+
+
 @event.listens_for(Engine, "connect")
 def enable_sqlite_foreign_keys(connection, _record):
     import sqlite3
 
     if isinstance(connection, sqlite3.Connection):
         connection.execute("PRAGMA foreign_keys=ON")
+        connection.execute("PRAGMA busy_timeout=5000")
 
 
 # Biến toàn cục quản lý kết nối Database hiện tại (cho phép hot-reload khi đổi cấu hình)
@@ -60,12 +81,13 @@ def is_cloud_mode() -> bool:
 
 
 def load_config() -> Dict[str, Any]:
-    """Đọc cấu hình từ file config.json ở thư mục gốc. Tạo mặc định nếu chưa tồn tại."""
+    """Đọc cấu hình từ file config.json ở thư mục dữ liệu. Tạo mặc định nếu chưa tồn tại."""
     default_cfg = {
         "gemini_api_key": os.environ.get("GEMINI_API_KEY", ""),
         "database_url": os.environ.get("DATABASE_URL", ""),
         "cloud_url": os.environ.get("SMARTSPEND_PUBLIC_URL", "")
         or os.environ.get("RENDER_EXTERNAL_URL", ""),
+        "allow_lan": os.environ.get("SMARTSPEND_ALLOW_LAN", "").lower() in ("1", "true"),
     }
     if is_cloud_mode():
         return default_cfg  # Hosted secrets are environment-only; never config.json.
@@ -77,26 +99,33 @@ def load_config() -> Dict[str, Any]:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
             return {
-                "gemini_api_key": data.get("gemini_api_key", "").strip(),
-                "database_url": data.get("database_url", "").strip(),
-                "cloud_url": data.get("cloud_url", "").strip(),
+                "gemini_api_key": str(data.get("gemini_api_key", "")).strip(),
+                "database_url": str(data.get("database_url", "")).strip(),
+                "cloud_url": str(data.get("cloud_url", "")).strip(),
+                "allow_lan": bool(data.get("allow_lan", False)),
             }
     except Exception:
         return default_cfg
 
 
 def save_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
-    """Lưu cấu hình gemini_api_key và database_url vào file config.json."""
+    """Lưu cấu hình vào file config.json an toàn (atomic replace)."""
     if is_cloud_mode():
         raise RuntimeError("Cấu hình cloud được quản lý qua biến môi trường")
     clean_cfg = {
         "gemini_api_key": str(cfg.get("gemini_api_key", "")).strip(),
         "database_url": str(cfg.get("database_url", "")).strip(),
         "cloud_url": str(cfg.get("cloud_url", "")).strip(),
+        "allow_lan": bool(cfg.get("allow_lan", False)),
     }
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     temporary = CONFIG_FILE.with_suffix(".json.tmp")
     with open(temporary, "w", encoding="utf-8") as f:
         json.dump(clean_cfg, f, indent=2, ensure_ascii=False)
+    try:
+        os.chmod(temporary, 0o600)
+    except OSError:
+        pass
     temporary.replace(CONFIG_FILE)
     return clean_cfg
 
@@ -104,8 +133,8 @@ def save_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
 def normalize_database_url(raw_url: str) -> str:
     """
     Chuẩn hóa chuỗi kết nối Database:
-    - Tự động chuyển 'postgres://' thành 'postgresql://' để tương thích với SQLAlchemy 1.4/2.0+.
-    - Nếu để trống hoặc không hợp lệ, trả về chuỗi rỗng để kích hoạt cơ chế fallback SQLite.
+    - Tự động chuyển 'postgres://' thành 'postgresql://' để tương thích với SQLAlchemy 2.0+.
+    - Nếu để trống, trả về chuỗi rỗng để dùng SQLite cục bộ.
     """
     if not raw_url:
         return ""
@@ -118,13 +147,14 @@ def normalize_database_url(raw_url: str) -> str:
     if url.startswith("postgresql+"):
         try:
             parsed = make_url(url)
-            # Supabase passwords often contain '@'. A raw password must be URL-
-            # encoded; repair only an invalid parsed hostname, not a valid URI.
             if parsed.host and "@" in parsed.host:
                 scheme, rest = url.split("://", 1)
                 credentials, destination = rest.rsplit("@", 1)
                 username, password = credentials.split(":", 1)
-                url = f"{scheme}://{quote(unquote(username), safe='')}:{quote(unquote(password), safe='')}@{destination}"
+                url = (
+                    f"{scheme}://{quote(unquote(username), safe='')}:"
+                    f"{quote(unquote(password), safe='')}@{destination}"
+                )
         except (ValueError, TypeError):
             pass
     return url
@@ -133,8 +163,6 @@ def normalize_database_url(raw_url: str) -> str:
 def init_db_connection(custom_url: Optional[str] = None, config_to_save=None) -> Dict[str, Any]:
     """
     Khởi tạo (hoặc khởi tạo lại) kết nối SQLAlchemy Engine & SessionLocal.
-    - Nếu người dùng đã cấu hình PostgreSQL URI (Supabase): kết nối trực tiếp với pool_pre_ping=True.
-    - Chỉ dùng SQLite khi chưa cấu hình PostgreSQL. Kết nối lỗi giữ nguyên nguồn dữ liệu.
     """
     global engine, SessionLocal, current_db_mode
     with connection_lock:
@@ -158,7 +186,6 @@ def init_db_connection(custom_url: Optional[str] = None, config_to_save=None) ->
                 )
                 from backend.account_migration import require_ready
 
-                # Desktop must satisfy exactly the same schema/role contract.
                 require_ready(candidate)
             else:
                 candidate = _create_sqlite_engine()
@@ -192,7 +219,7 @@ def init_db_connection(custom_url: Optional[str] = None, config_to_save=None) ->
 
 
 def _init_sqlite_fallback() -> None:
-    """Hàm nội bộ khởi tạo SQLite fallback khi chưa có cấu hình Supabase."""
+    """Hàm nội bộ khởi tạo SQLite fallback khi chưa có cấu hình PostgreSQL."""
     global engine, SessionLocal, current_db_mode
 
     engine = _create_sqlite_engine()
@@ -207,9 +234,7 @@ def _create_sqlite_engine() -> Engine:
         pool_pre_ping=True,
     )
 
-    from backend import models, finance_models  # noqa: F401
-
-    # Keep a consistent SQLite snapshot before the first additive finance upgrade.
+    load_all_models()
     from sqlalchemy import inspect
 
     local_path = Path(local_engine.url.database)
@@ -270,4 +295,5 @@ def get_db_status() -> Dict[str, Any]:
         "mode": current_db_mode,
         "is_cloud_postgres": current_db_mode == "postgresql",
         "configured_url_masked": masked_url,
+        "data_dir": str(BASE_DIR),
     }

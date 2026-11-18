@@ -1,5 +1,11 @@
 module.exports = {
-  content: ["./frontend/index.html", "./frontend/app.js", "./frontend/finance.js"],
+  content: [
+    "./frontend/index.html",
+    "./frontend/auth.js",
+    "./frontend/app.js",
+    "./frontend/finance.js",
+  ],
+  darkMode: "class",
   theme: {
     extend: {
       fontFamily: {

@@ -11,8 +11,10 @@ from backend.models import utc_now
 AUTO_PREFIX = "plan-completion:"
 
 
-def sync_completion_payment(db, item, payload):
+def sync_completion_payment(db, item, payload, spent_on=None):
     from backend.finance_api import today
+
+    effective_day = spent_on or today()
 
     payment = db.query(Transaction).filter_by(source_item_id=item.id).first()
     automatic = payment is not None and payment.client_id.startswith(AUTO_PREFIX)
@@ -50,13 +52,13 @@ def sync_completion_payment(db, item, payload):
             title=item.name,
             amount=item.price,
             kind="expense",
-            spent_on=today(),
+            spent_on=effective_day,
             category_id=category.id,
             note="Ghi từ ô hoàn thành kế hoạch",
         )
         db.add(payment)
     elif payment.deleted_at is not None:
-        payment.spent_on = today()
+        payment.spent_on = effective_day
         payment.amount = item.price
     elif payload.price is not None:
         payment.amount = item.price

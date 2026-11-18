@@ -4,21 +4,26 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
-import threading
 import sys
+import threading
 import time
 from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
 import webbrowser
 
-HOST = "0.0.0.0"
-PORT = 8000
+PORT = int(os.environ.get("SMARTSPEND_PORT", "8000"))
 LOCAL_URL = f"http://127.0.0.1:{PORT}"
 logger = logging.getLogger(__name__)
 
 
+def app_runtime_dir() -> Path:
+    folder = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "SmartSpendPro"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
 def configure_logging():
-    folder = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "SmartSpendPro" / "logs"
+    folder = app_runtime_dir() / "logs"
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / "desktop.log"
     handler = RotatingFileHandler(path, maxBytes=1_000_000, backupCount=2, encoding="utf-8")
@@ -26,6 +31,12 @@ def configure_logging():
     logging.getLogger().addHandler(handler)
     logging.getLogger().setLevel(logging.INFO)
     return path
+
+
+def resolve_bind_host(cfg) -> str:
+    if os.environ.get("SMARTSPEND_HOST"):
+        return os.environ["SMARTSPEND_HOST"]
+    return "0.0.0.0" if cfg.get("allow_lan") else "127.0.0.1"
 
 
 def wait_for_server_ready(timeout=15.0, server=None, thread=None):
@@ -57,10 +68,11 @@ def show_startup_error(message):
 def open_window(url):
     try:
         import webview
-        from backend.database import BASE_DIR
 
+        profile_dir = app_runtime_dir() / "webview_profile"
+        profile_dir.mkdir(parents=True, exist_ok=True)
         webview.create_window("SmartSpend Pro", url, width=1360, height=860, min_size=(960, 640))
-        webview.start(private_mode=False, storage_path=str(BASE_DIR / "webview_profile"))
+        webview.start(private_mode=False, storage_path=str(profile_dir))
         return True
     except Exception as exc:
         logger.warning("Desktop window unavailable (%s); opening browser", type(exc).__name__)
@@ -73,21 +85,29 @@ def main(check_startup=False):
     server = None
     thread = None
     try:
-        from backend.database import load_config
         from backend.access import normalize_public_url
+        from backend.database import load_config, save_config
 
-        cloud_url = normalize_public_url(load_config().get("cloud_url", ""))
+        cfg = load_config()
+        if "--reset-cloud" in sys.argv:
+            cfg["cloud_url"] = ""
+            save_config(cfg)
+
+        force_local = "--local" in sys.argv
+        cloud_url = "" if force_local else normalize_public_url(cfg.get("cloud_url", ""))
         if cloud_url:
             if check_startup:
                 logger.info("Cloud launcher configuration loaded")
                 return 0
             open_window(cloud_url)
             return 0
+
         import uvicorn
         from backend.api_server import app
 
+        bind_host = resolve_bind_host(cfg)
         server = uvicorn.Server(
-            uvicorn.Config(app, host=HOST, port=PORT, log_level="warning", log_config=None)
+            uvicorn.Config(app, host=bind_host, port=PORT, log_level="warning", log_config=None)
         )
 
         def run_server():

@@ -1,0 +1,20 @@
+# Đặt file này tại: <APPS_ROOT>/_proxy/sites/smartspend.caddy (Caddy)
+# Thay smartspend.tenmiencuaban.com bằng subdomain thực tế trùng với SMARTSPEND_PUBLIC_URL
+
+smartspend.tenmiencuaban.com {
+    request_body {
+        max_size 6MB
+    }
+
+    reverse_proxy 127.0.0.1:8092 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        # Chặn giả mạo CF-Connecting-IP khi mở trực tiếp qua Caddy (xóa dòng này nếu đi sau Cloudflare Proxy)
+        header_up -CF-Connecting-IP
+        transport http {
+            read_timeout 120s
+            write_timeout 120s
+        }
+    }
+}

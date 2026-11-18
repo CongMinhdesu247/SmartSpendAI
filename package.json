@@ -5,7 +5,7 @@
     "build:css": "tailwindcss -c config/tailwind.cjs -i frontend/tailwind.input.css -o frontend/tailwind.css --minify",
     "format": "prettier --config config/prettier.json --ignore-path config/prettier.ignore --write \"frontend/**/*.{js,html,css,json}\" \"tests/*.cjs\" \"config/*.{cjs,json}\" package.json .vscode/settings.json",
     "format:check": "prettier --config config/prettier.json --ignore-path config/prettier.ignore --check \"frontend/**/*.{js,html,css,json}\" \"tests/*.cjs\" \"config/*.{cjs,json}\" package.json .vscode/settings.json",
-    "test:ui": "node tests/test_private_cache.cjs && node tests/test_iphone_qr.cjs && node tests/test_cashflow_chart.cjs && node tests/test_plan_sync.cjs && node tests/test_money_inputs.cjs"
+    "test:ui": "node tests/test_private_cache.cjs && node tests/test_iphone_qr.cjs && node tests/test_cashflow_chart.cjs && node tests/test_plan_sync.cjs && node tests/test_money_inputs.cjs && node tests/test_quick_add_and_csp.cjs"
   },
   "devDependencies": {
     "prettier": "3.6.2",

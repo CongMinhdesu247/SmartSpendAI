@@ -8,4 +8,4 @@ COPY --chown=smartspend:smartspend backend ./backend
 COPY --chown=smartspend:smartspend frontend ./frontend
 USER smartspend
 EXPOSE 8000
-CMD ["sh", "-c", "exec uvicorn backend.api_server:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --proxy-headers --forwarded-allow-ips='*'"]
+CMD ["sh", "-c", "exec uvicorn backend.api_server:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --proxy-headers --forwarded-allow-ips=\"${FORWARDED_ALLOW_IPS:-127.0.0.1}\""]

@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .playwright-cli/
 output/
+data/
 config.json
 smartspend_local.db
 *.before_finance_v1.db

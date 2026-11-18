@@ -8,8 +8,9 @@ VERSION = "private-ledgers-v1"
 
 
 def ledger_tables():
-    from backend import models, finance_models  # noqa: F401
+    from backend.database import load_all_models
 
+    load_all_models()
     return sorted(
         m.local_table.name for m in Base.registry.mappers if issubclass(m.class_, LedgerOwned)
     )

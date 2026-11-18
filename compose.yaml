@@ -1,4 +1,4 @@
-name: smartspend-hp
+name: ${SMARTSPEND_COMPOSE_PROJECT:-smartspend-hp}
 
 x-logging: &logging
   driver: json-file
@@ -16,7 +16,13 @@ x-app: &app
     - path: ${SMARTSPEND_ENV_FILE:-.env}
   environment:
     SMARTSPEND_CLOUD: "1"
+    SMARTSPEND_TRUST_PROXY: "${SMARTSPEND_TRUST_PROXY:-1}"
     DATABASE_URL: postgresql+psycopg2://smartspend:${SMARTSPEND_DB_PASSWORD}@db:5432/smartspend
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop:
+    - ALL
   logging: *logging
   mem_limit: 768m
   cpus: 1.5
@@ -37,6 +43,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./scripts/homeserver/init-db.sh:/docker-entrypoint-initdb.d/10-smartspend.sh:ro
+    networks:
+      - db_internal
     healthcheck:
       test: [CMD-SHELL, "pg_isready -U postgres -d smartspend"]
       interval: 5s
@@ -46,6 +54,8 @@ services:
     mem_limit: 512m
     cpus: 1.0
     shm_size: 128m
+    security_opt:
+      - no-new-privileges:true
     logging: *logging
 
   web:
@@ -54,6 +64,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - db_internal
+      - web_edge
     ports:
       - "127.0.0.1:${SMARTSPEND_HTTP_PORT:-8092}:8000"
     healthcheck:
@@ -70,7 +83,16 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - db_internal
     command: [python, scripts/homeserver/migrate.py, --apply]
+
+networks:
+  db_internal:
+    driver: bridge
+    internal: true
+  web_edge:
+    driver: bridge
 
 volumes:
   postgres_data:

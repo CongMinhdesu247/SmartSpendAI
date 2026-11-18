@@ -3,75 +3,144 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>SmartSpend Pro — Quản lý chi tiêu</title>
+    <title>SmartSpend — Quản lý Chi tiêu &amp; Kế hoạch</title>
 
-    <!-- Cấu hình iOS Safari PWA ("Add to Home Screen" chạy như App iOS thực thụ) -->
-    <link rel="manifest" href="/manifest.json?v=13" />
-    <meta name="theme-color" content="#f4f7fc" />
+    <link rel="manifest" href="/manifest.json?v=21" />
+    <meta id="themeColorMeta" name="theme-color" content="#f8fafc" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="SmartSpend Pro" />
-    <link rel="icon" href="/favicon-32.png?v=13" type="image/png" sizes="32x32" />
+    <meta name="apple-mobile-web-app-title" content="SmartSpend" />
+    <link rel="icon" href="/favicon.svg?v=21" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png?v=21" type="image/png" sizes="32x32" />
     <link
       rel="apple-touch-icon"
-      href="/apple-touch-icon.png?v=13"
+      href="/apple-touch-icon.png?v=21"
       sizes="180x180"
       type="image/png"
     />
 
-    <link rel="stylesheet" href="/tailwind.css" />
-
-    <!-- Chart.js CDN -->
+    <link rel="stylesheet" href="/tailwind.css?v=21" />
     <script src="/vendor/chart.umd.min.js"></script>
-
-    <!-- Google Fonts Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/style.css?v=21" />
   </head>
 
-  <body
-    class="min-h-screen bg-[#f4f7fc] text-slate-800 font-sans antialiased selection:bg-indigo-600 selection:text-white"
-  >
+  <body class="min-h-screen antialiased">
     <!-- ==================== HEADER BAR ==================== -->
-    <header
-      class="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-none"
-    >
-      <div
-        class="max-w-[1440px] mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3"
-      >
-        <!-- Logo & Tên Ứng dụng -->
-        <div class="flex items-center gap-3">
+    <header class="app-header sticky top-0 z-30">
+      <div class="max-w-[1140px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5 min-w-0">
           <div class="brand-mark">
-            <img src="/icons/smartspend-192.png" width="32" height="32" alt="" />
+            <img src="/icons/smartspend-192.png" width="28" height="28" alt="" />
           </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h1 class="text-lg font-semibold tracking-tight text-slate-900">SmartSpend Pro </h1>
-            </div>
-          </div>
+          <h1 class="brand-title truncate">SmartSpend</h1>
         </div>
 
-        <span data-private class="app-header-note">Sổ riêng của bạn</span>
+        <nav data-private class="workspace-nav" aria-label="Điều hướng chính">
+          <button
+            type="button"
+            class="nav-tab"
+            data-view="spending"
+            data-action="switch-workspace"
+            data-target-view="spending"
+            aria-current="page"
+          >
+            <svg class="icon" aria-hidden="true"><use href="/icons.svg?v=21#wallet"></use></svg>
+            <span>Chi tiêu</span>
+          </button>
+          <button
+            type="button"
+            class="nav-tab"
+            data-view="plans"
+            data-action="open-planning-workspace"
+          >
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#calendar-days"></use>
+            </svg>
+            <span>Kế hoạch</span>
+          </button>
+          <button
+            type="button"
+            class="nav-tab"
+            data-view="account"
+            data-action="switch-workspace"
+            data-target-view="account"
+          >
+            <svg class="icon" aria-hidden="true"><use href="/icons.svg?v=21#user-round"></use></svg>
+            <span>Tài khoản</span>
+          </button>
+        </nav>
+
+        <div class="flex items-center gap-1.5 sm:gap-2">
+          <button
+            data-private
+            id="commandPaletteTriggerBtn"
+            type="button"
+            class="command-trigger-btn"
+            data-action="open-command-palette"
+            aria-label="Tìm lệnh nhanh (Ctrl+K)"
+            title="Lệnh nhanh (Ctrl+K)"
+          >
+            <svg class="icon icon-xs" aria-hidden="true">
+              <use href="/icons.svg?v=21#search"></use>
+            </svg>
+            <span class="hidden lg:inline">Tìm nhanh</span>
+            <kbd class="hidden xl:inline-block">Ctrl K</kbd>
+          </button>
+          <button
+            id="themeToggleBtn"
+            type="button"
+            class="icon-button theme-toggle"
+            data-action="toggle-theme"
+            aria-label="Đổi giao diện sáng/tối"
+            title="Sáng / Tối (D)"
+          >
+            <svg id="themeIconMoon" class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#moon"></use>
+            </svg>
+            <svg id="themeIconSun" class="icon hidden" aria-hidden="true">
+              <use href="/icons.svg?v=21#sun"></use>
+            </svg>
+          </button>
+          <button
+            data-private
+            id="primaryLedgerAction"
+            type="button"
+            class="ui-button primary ledger-action hidden md:inline-flex"
+            data-action="open-transaction-editor"
+            title="Ghi thu/chi (N)"
+          >
+            <svg class="icon" aria-hidden="true"><use href="/icons.svg?v=21#plus"></use></svg>
+            <span>Ghi thu/chi</span>
+          </button>
+        </div>
       </div>
     </header>
 
-    <p id="authLoading" class="auth-loading">Đang mở app…</p>
+    <!-- Nút (+) một tay trên Mobile -->
+    <button
+      data-private
+      id="mobileFabBtn"
+      type="button"
+      class="mobile-fab md:hidden"
+      data-action="open-mobile-quick-sheet"
+      aria-label="Ghi thu chi"
+    >
+      <svg class="icon" aria-hidden="true"><use href="/icons.svg?v=21#plus"></use></svg>
+    </button>
+
+    <p id="authLoading" class="auth-loading">Đang tải…</p>
     <section id="authGate" class="auth-gate hidden" aria-labelledby="authTitle">
-      <div class="auth-card"
-        ><div class="brand-mark"
-          ><img src="/icons/smartspend-192.png" width="32" height="32" alt="" /></div
-        ><h2 id="authTitle">Mở SmartSpend</h2
-        ><p class="muted small">Đăng nhập để xem chi tiêu của bạn.</p
-        ><form onsubmit="submitAccessLogin(event)"
-          ><div id="accountFields" class="editor-field hidden"
-            ><label for="accessUsername">Tên đăng nhập</label
-            ><input
+      <div class="auth-card">
+        <div class="brand-mark">
+          <img src="/icons/smartspend-192.png" width="30" height="30" alt="" />
+        </div>
+        <h2 id="authTitle">Đăng nhập</h2>
+        <p class="muted small">Mở sổ chi tiêu cá nhân của bạn.</p>
+        <form id="authForm">
+          <div id="accountFields" class="editor-field hidden">
+            <label for="accessUsername">Tên đăng nhập</label>
+            <input
               type="text"
               id="accessUsername"
               autocomplete="username"
@@ -81,270 +150,560 @@
               minlength="3"
               maxlength="32"
               pattern="[A-Za-z0-9_]+"
-              placeholder="Ví dụ: minh_nguyen"
-            /><p class="muted small">Sổ cũ: tên đăng nhập chuso, mật khẩu hiện tại.</p></div
-          ><div class="editor-field"
-            ><label for="accessPassword">Mật khẩu truy cập</label
-            ><input
+              placeholder="minh_nguyen"
+            />
+            <p class="muted small">Mặc định: chuso</p>
+          </div>
+          <div class="editor-field">
+            <label for="accessPassword">Mật khẩu</label>
+            <input
               type="password"
               id="accessPassword"
               autocomplete="current-password"
               required
               maxlength="256"
-              placeholder="Nhập mật khẩu" /></div
-          ><p id="registerHint" class="muted small hidden"
-            >Tên gồm 3–32 chữ cái không dấu, số hoặc dấu _. Mật khẩu ít nhất 12 ký tự. Mỗi tài khoản
-            có một sổ riêng.</p
-          ><p id="authError" class="auth-error hidden" role="alert"></p
-          ><button id="loginSubmitButton" type="submit" class="ui-button primary"
-            >Đăng nhập</button
-          ></form
-        ><button
-          id="accountToggle"
-          type="button"
-          class="text-action hidden"
-          onclick="toggleAccessMode()"
-          >Chưa có tài khoản? Tạo sổ riêng</button
-        ><button type="button" class="text-action" onclick="retryAccess()"
-          >Thử kết nối lại</button
-        ></div
-      >
-    </section>
-    <!-- ==================== MAIN CONTAINER ==================== -->
-    <main data-private class="simple-shell max-w-[1440px] mx-auto px-4 sm:px-6 py-6">
-      <div class="workspace-heading workspace-toolbar">
-        <div
-          ><h2 id="workspaceTitle" aria-live="polite">Sổ chi tiêu</h2
-          ><p id="workspaceSubtitle" class="workspace-subtitle"
-            >Thu, chi và ngân sách theo tháng.</p
-          ></div
-        >
-        <button
-          id="primaryLedgerAction"
-          type="button"
-          class="ui-button primary ledger-action"
-          onclick="openTransactionEditor()"
-          ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#plus"></use></svg> Ghi
-          thu/chi</button
-        >
+              placeholder="Nhập mật khẩu"
+            />
+          </div>
+          <div id="inviteCodeField" class="editor-field hidden">
+            <label for="accessInviteCode">Mã mời</label>
+            <input
+              type="password"
+              id="accessInviteCode"
+              autocomplete="off"
+              maxlength="128"
+              placeholder="Nhập mã mời"
+            />
+          </div>
+          <p id="registerHint" class="muted small hidden">
+            Tên 3–32 ký tự chữ/số/dấu _, mật khẩu tối thiểu 12 ký tự.
+          </p>
+          <p id="authError" class="auth-error hidden" role="alert"></p>
+          <button id="loginSubmitButton" type="submit" class="ui-button primary">Mở sổ</button>
+        </form>
+        <div class="auth-footer-links">
+          <button id="accountToggle" type="button" class="text-action hidden">
+            Tạo tài khoản mới
+          </button>
+          <button id="authRetryButton" type="button" class="text-action">Thử lại</button>
+        </div>
       </div>
-      <nav class="workspace-nav" aria-label="Điều hướng chính">
-        <button
-          type="button"
-          class="nav-tab"
-          data-view="spending"
-          aria-current="page"
-          onclick="switchWorkspace('spending')"
-          ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#wallet"></use></svg
-          ><span>Sổ chi tiêu</span></button
-        >
-        <button type="button" class="nav-tab" data-view="plans" onclick="openPlanningWorkspace()"
-          ><svg class="icon" aria-hidden="true">
-            <use href="/icons.svg?v=13#calendar-days"></use></svg
-          ><span>Kế hoạch</span></button
-        >
-        <button
-          type="button"
-          class="nav-tab"
-          data-view="account"
-          onclick="switchWorkspace('account')"
-          ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#user-round"></use></svg
-          ><span>Tài khoản</span></button
-        >
-      </nav>
-      <nav id="planningNav" class="plan-subnav hidden" aria-label="Các loại kế hoạch">
+    </section>
+
+    <!-- ==================== MAIN CONTAINER ==================== -->
+    <main data-private class="simple-shell mx-auto px-4 sm:px-6 py-4 sm:py-5">
+      <div class="sr-only">
+        <h2 id="workspaceTitle" aria-live="polite">Chi tiêu</h2>
+        <p id="workspaceSubtitle">Dòng tiền theo tháng.</p>
+      </div>
+
+      <nav id="planningNav" class="plan-subnav hidden" aria-label="Phân mục kế hoạch">
         <button
           type="button"
           class="plan-tab"
           data-plan-view="plans"
-          onclick="switchWorkspace('plans')"
-          >Gợi ý AI</button
+          data-action="switch-workspace"
+          data-target-view="plans"
         >
+          Kế hoạch
+        </button>
         <button
           type="button"
           class="plan-tab"
           data-plan-view="recurring"
-          onclick="switchWorkspace('recurring')"
-          >Định kỳ <span id="billDueCount" class="nav-count hidden"></span
-        ></button>
+          data-action="switch-workspace"
+          data-target-view="recurring"
+        >
+          Định kỳ <span id="billDueCount" class="nav-count hidden"></span>
+        </button>
         <button
           type="button"
           class="plan-tab"
           data-plan-view="goals"
-          onclick="switchWorkspace('goals')"
-          >Tiết kiệm</button
+          data-action="switch-workspace"
+          data-target-view="goals"
         >
+          Tiết kiệm
+        </button>
       </nav>
+
       <div id="financeConnection" class="connection-note hidden" role="status"></div>
-      <section id="spendingView" class="workspace-view" aria-label="Chi tiêu">
-        <div class="section-toolbar"
-          ><div class="month-picker"
-            ><button
+
+      <!-- ==================== TAB 1: CHI TIÊU (TỐI GIẢN TẬP TRUNG) ==================== -->
+      <section
+        id="spendingView"
+        class="workspace-view spending-focused-shell"
+        aria-label="Chi tiêu"
+      >
+        <!-- Ô ghi nhanh 1 dòng trên Desktop (Mobile dùng nút + góc dưới) -->
+        <form id="quickAddForm" class="quick-add-inline hidden md:block mb-3.5">
+          <div class="quick-add-row">
+            <label for="quickAddInput" class="sr-only">Ghi nhanh giao dịch</label>
+            <input
+              id="quickAddInput"
+              type="text"
+              maxlength="280"
+              autocomplete="off"
+              placeholder="Ghi nhanh: 35k5 phở, 1tr5 tiền nhà, +15tr lương…"
+            />
+            <button
               type="button"
-              class="icon-button"
-              onclick="changeFinanceMonth(-1)"
-              aria-label="Tháng trước"
-              ><svg class="icon" aria-hidden="true">
-                <use href="/icons.svg?v=13#chevron-left"></use></svg></button
-            ><label for="financeMonth" class="sr-only">Tháng báo cáo</label
-            ><input
-              id="financeMonth"
-              type="month"
-              onchange="changeFinanceMonthTo(this.value)"
-              required /><button
+              id="quickAddDetailBtn"
+              class="ui-button quiet small hidden"
+              data-action="quick-add-detail"
+            >
+              Chi tiết
+            </button>
+            <button type="submit" id="quickAddSubmitBtn" class="ui-button primary small"
+              >Ghi</button
+            >
+          </div>
+          <div class="quick-add-popover">
+            <div id="quickAddHints" class="quick-add-hints">
+              <button
+                type="button"
+                class="quick-hint-chip"
+                data-action="fill-quick-chip"
+                data-sample="35k ăn sáng"
+              >
+                35k ăn sáng
+              </button>
+              <button
+                type="button"
+                class="quick-hint-chip"
+                data-action="fill-quick-chip"
+                data-sample="45k cà phê"
+              >
+                45k cà phê
+              </button>
+              <button
+                type="button"
+                class="quick-hint-chip"
+                data-action="fill-quick-chip"
+                data-sample="50k đổ xăng"
+              >
+                50k đổ xăng
+              </button>
+              <button
+                type="button"
+                class="quick-hint-chip"
+                data-action="fill-quick-chip"
+                data-sample="120k đi chợ"
+              >
+                120k đi chợ
+              </button>
+              <button
+                type="button"
+                class="quick-hint-chip income"
+                data-action="fill-quick-chip"
+                data-sample="+15tr lương"
+              >
+                +15tr lương
+              </button>
+            </div>
+            <div id="quickAddPreview" class="quick-add-preview hidden" aria-live="polite"></div>
+          </div>
+        </form>
+
+        <div id="dueBillsBanner" class="due-bills-banner hidden" role="status"></div>
+
+        <!-- THẺ DUY NHẤT #1: Tổng quan tháng + 3 nút mở rộng khi cần -->
+        <section class="surface month-summary-card">
+          <div class="summary-card-top">
+            <div class="month-picker">
+              <button
+                type="button"
+                class="icon-button month-step-btn"
+                data-action="change-finance-month"
+                data-delta="-1"
+                aria-label="Tháng trước"
+              >
+                <svg class="icon" aria-hidden="true">
+                  <use href="/icons.svg?v=21#chevron-left"></use>
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="month-display-box"
+                data-action="open-month-picker"
+                aria-label="Chọn tháng báo cáo"
+              >
+                <svg class="icon icon-xs muted" aria-hidden="true">
+                  <use href="/icons.svg?v=21#calendar-days"></use>
+                </svg>
+                <span id="financeMonthDisplay">Tháng 11/2026</span>
+              </button>
+              <label for="financeMonth" class="sr-only">Tháng báo cáo</label>
+              <input id="financeMonth" type="month" tabindex="-1" />
+              <button
+                type="button"
+                class="icon-button month-step-btn"
+                data-action="change-finance-month"
+                data-delta="1"
+                aria-label="Tháng sau"
+              >
+                <svg class="icon" aria-hidden="true">
+                  <use href="/icons.svg?v=21#chevron-right"></use>
+                </svg>
+              </button>
+            </div>
+
+            <details id="ledgerTools" class="ledger-tools">
+              <summary aria-label="Tùy chọn sổ chi tiêu">
+                <svg class="icon" aria-hidden="true">
+                  <use href="/icons.svg?v=21#ellipsis"></use>
+                </svg>
+              </summary>
+              <div class="ledger-tools-list">
+                <button type="button" data-action="open-budget-editor">Đặt ngân sách tháng</button>
+                <button type="button" data-action="open-category-manager">Danh mục</button>
+                <button type="button" data-action="export-csv-month">Xuất CSV tháng</button>
+                <button type="button" data-action="open-backup-center">Sao lưu &amp; Nhập</button>
+                <button type="button" data-action="open-archive-center">Thùng rác</button>
+                <button type="button" data-action="open-shortcuts-modal">Phím tắt</button>
+              </div>
+            </details>
+          </div>
+
+          <div id="financeStats" class="summary-stats-block" aria-live="polite"></div>
+          <div id="financePulse" class="hidden" aria-hidden="true"></div>
+
+          <div class="home-drawer-toggles" aria-label="Tiện ích mở rộng">
+            <button
               type="button"
-              class="icon-button"
-              onclick="changeFinanceMonth(1)"
-              aria-label="Tháng sau"
-              ><svg class="icon" aria-hidden="true">
-                <use href="/icons.svg?v=13#chevron-right"></use></svg></button></div
-          ><details id="ledgerTools" class="ledger-tools"
-            ><summary aria-label="Công cụ sổ chi tiêu"
-              ><svg class="icon" aria-hidden="true">
-                <use href="/icons.svg?v=13#ellipsis"></use></svg></summary
-            ><div class="ledger-tools-list"
-              ><button type="button" onclick="openBudgetEditor()">Đặt ngân sách tháng</button
-              ><button type="button" onclick="openCategoryManager()">Quản lý danh mục</button
-              ><button type="button" onclick="exportTransactions()">Xuất giao dịch CSV</button></div
-            ></details
-          ></div
-        >
-        <div id="financeStats" class="finance-stats" aria-live="polite"></div>
-        <div class="finance-analysis"
-          ><section class="surface"
-            ><div class="section-toolbar"
-              ><h3>Thu chi trong tháng</h3><span class="muted small">Lũy kế theo ngày</span></div
-            ><div id="dailySpendingChart" class="daily-chart"></div
-            ><div id="monthBudgetStatus" class="budget-status"></div></section
-          ><details class="surface category-summary"
-            ><summary>Chi theo danh mục</summary><div id="categoryBreakdown"></div></details
-        ></div>
-        <section class="surface transaction-section"
-          ><div class="section-toolbar"><h3>Giao dịch gần đây</h3></div>
-          <details id="transactionFilterPanel" class="transaction-filter-panel"
-            ><summary
-              ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#search"></use></svg
-              ><span id="transactionFilterLabel">Tìm kiếm và lọc</span></summary
+              id="toggleCalendarBtn"
+              class="drawer-pill-btn"
+              aria-expanded="false"
+              data-f-action="toggle-home-panel"
+              data-panel="calendar"
             >
-            <div class="transaction-filters"
-              ><div class="search-field"
-                ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#search"></use></svg
-                ><label for="transactionSearch" class="sr-only">Tìm giao dịch</label
-                ><input
-                  id="transactionSearch"
-                  type="search"
-                  placeholder="Tìm giao dịch"
-                  oninput="scheduleTransactionSearch()"
-                  maxlength="255" /></div
-              ><label for="transactionCategoryFilter" class="sr-only">Lọc danh mục</label
-              ><select id="transactionCategoryFilter" onchange="resetTransactionPage()"
-                ><option value="">Tất cả danh mục</option></select
-              ><label for="transactionKindFilter" class="sr-only">Lọc loại giao dịch</label
-              ><select id="transactionKindFilter" onchange="resetTransactionPage()"
-                ><option value="">Thu &amp; chi</option
-                ><option value="expense">Khoản chi</option
-                ><option value="income">Khoản thu</option></select
-              ></div
+              <svg class="icon icon-xs" aria-hidden="true">
+                <use href="/icons.svg?v=21#calendar-days"></use>
+              </svg>
+              <span>Lịch</span>
+            </button>
+            <button
+              type="button"
+              id="toggleChartsBtn"
+              class="drawer-pill-btn"
+              aria-expanded="false"
+              data-f-action="toggle-home-panel"
+              data-panel="charts"
             >
-          </details>
-          <div id="pendingTransactions"></div
-          ><div id="transactionList" aria-live="polite"
-            ><p class="empty-copy">Đang tải giao dịch…</p></div
-          ><div id="transactionPagination" class="pagination"></div
-        ></section>
+              <svg class="icon icon-xs" aria-hidden="true">
+                <use href="/icons.svg?v=21#bar-chart-3"></use>
+              </svg>
+              <span>Thống kê</span>
+            </button>
+            <button
+              type="button"
+              id="toggleAiBtn"
+              class="drawer-pill-btn"
+              aria-expanded="false"
+              data-f-action="toggle-home-panel"
+              data-panel="ai"
+            >
+              <svg class="icon icon-xs" aria-hidden="true">
+                <use href="/icons.svg?v=21#trending-up"></use>
+              </svg>
+              <span>Phân tích AI</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- KHỐI MỞ RỘNG 1 (Ẩn mặc định): Lịch chi tiêu -->
+        <section id="spendingHeatmapCard" class="surface home-expand-panel hidden">
+          <div class="section-toolbar mb-3">
+            <div class="flex items-center gap-2">
+              <h3>Lịch chi tiêu</h3>
+              <span id="noSpendBadge" class="muted small"></span>
+            </div>
+            <button
+              type="button"
+              class="text-action"
+              data-f-action="toggle-home-panel"
+              data-panel="calendar"
+            >
+              Thu gọn
+            </button>
+          </div>
+          <div id="spendingHeatmapGrid" class="heatmap-wrap"></div>
+        </section>
+
+        <!-- KHỐI MỞ RỘNG 2 (Ẩn mặc định): Biểu đồ & Cơ cấu danh mục -->
+        <section id="homePanelCharts" class="surface home-expand-panel hidden">
+          <div class="section-toolbar mb-3 flex-wrap">
+            <h3 id="spendingChartTitle">Thống kê chi tiêu</h3>
+            <span id="spendingChartSubtitle" class="sr-only">Chi ròng lũy kế</span>
+            <div class="flex items-center gap-1.5">
+              <button
+                type="button"
+                id="chartModeDailyBtn"
+                class="filter-chip active"
+                aria-pressed="true"
+                data-f-action="switch-spending-chart-mode"
+                data-mode="daily"
+              >
+                Theo ngày
+              </button>
+              <button
+                type="button"
+                id="chartModeTrendsBtn"
+                class="filter-chip"
+                aria-pressed="false"
+                data-f-action="switch-spending-chart-mode"
+                data-mode="trends"
+              >
+                6 tháng
+              </button>
+              <button
+                type="button"
+                class="text-action ml-2"
+                data-f-action="toggle-home-panel"
+                data-panel="charts"
+              >
+                Thu gọn
+              </button>
+            </div>
+          </div>
+
+          <div id="spendingChartCard">
+            <div id="dailyChartModeWrap">
+              <div id="dailySpendingChart" class="daily-chart"></div>
+              <div id="monthBudgetStatus" class="budget-status"></div>
+            </div>
+            <div id="sixMonthTrendsWrap" class="hidden">
+              <div id="sixMonthTrendsBox" class="trends-chart-box"></div>
+              <div id="sixMonthTrendsSummary" class="trends-summary-strip"></div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-4 border-t border-slate-200/70 dark:border-slate-800">
+            <h4 class="text-xs font-semibold muted mb-2">Theo danh mục</h4>
+            <div class="category-overview-grid">
+              <div id="categoryDoughnutWrap" class="category-doughnut-wrap hidden">
+                <canvas id="categoryDoughnutCanvas"></canvas>
+              </div>
+              <div id="categoryBreakdown" class="min-w-0 flex-1"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- KHỐI MỞ RỘNG 3 (Ẩn mặc định): Điểm sức khỏe & Phân tích AI -->
+        <section id="homePanelAi" class="surface home-expand-panel hidden">
+          <div class="section-toolbar mb-3">
+            <h3>Sức khỏe &amp; Phân tích AI</h3>
+            <button
+              type="button"
+              class="text-action"
+              data-f-action="toggle-home-panel"
+              data-panel="ai"
+            >
+              Thu gọn
+            </button>
+          </div>
+          <div id="healthHeroSection" class="space-y-3.5">
+            <div
+              id="healthScoreCard"
+              class="sub-surface health-score-card"
+              aria-live="polite"
+            ></div>
+            <div id="aiCoachCard" class="sub-surface ai-coach-card">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h4 class="section-card-title">Chẩn đoán dòng tiền</h4>
+                <button
+                  type="button"
+                  id="runAiCoachBtn"
+                  class="ui-button primary small"
+                  data-f-action="run-ai-coach"
+                >
+                  Phân tích ngay
+                </button>
+              </div>
+              <div class="coach-focus-bar mt-2.5">
+                <button
+                  type="button"
+                  class="coach-focus-chip active"
+                  data-f-action="set-coach-focus"
+                  data-focus=""
+                >
+                  Tổng quan
+                </button>
+                <button
+                  type="button"
+                  class="coach-focus-chip"
+                  data-f-action="set-coach-focus"
+                  data-focus="Cắt giảm chi phí ăn ngoài và cà phê vặt"
+                >
+                  Giảm ăn ngoài
+                </button>
+                <button
+                  type="button"
+                  class="coach-focus-chip"
+                  data-f-action="set-coach-focus"
+                  data-focus="Tối ưu để tiết kiệm tối thiểu 20% thu nhập tháng"
+                >
+                  Tiết kiệm 20%
+                </button>
+                <button
+                  type="button"
+                  class="coach-focus-chip"
+                  data-f-action="set-coach-focus"
+                  data-focus="Kiểm soát mua sắm ngẫu hứng cuối tháng"
+                >
+                  Phanh mua sắm
+                </button>
+              </div>
+              <div id="aiCoachResult" class="ai-coach-result hidden"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- THẺ DUY NHẤT #2: Danh sách giao dịch gọn sạch -->
+        <section class="surface transaction-section">
+          <div class="section-toolbar">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3>Giao dịch</h3>
+              <span id="transactionTotalLabel" class="muted small"></span>
+              <button
+                type="button"
+                id="activeDayFilterChip"
+                class="day-filter-chip hidden"
+                data-f-action="clear-day-filter"
+              ></button>
+            </div>
+            <button
+              type="button"
+              id="toggleTxFilterBtn"
+              class="filter-chip"
+              aria-expanded="false"
+              data-f-action="toggle-tx-filter"
+            >
+              <svg class="icon icon-xs" aria-hidden="true">
+                <use href="/icons.svg?v=21#search"></use>
+              </svg>
+              <span id="transactionFilterLabel">Lọc</span>
+            </button>
+          </div>
+
+          <div id="transactionFilterPanel" class="transaction-filters hidden">
+            <div class="search-field">
+              <svg class="icon icon-xs" aria-hidden="true">
+                <use href="/icons.svg?v=21#search"></use>
+              </svg>
+              <label for="transactionSearch" class="sr-only">Tìm giao dịch</label>
+              <input
+                id="transactionSearch"
+                type="search"
+                placeholder="Tìm tên giao dịch…"
+                maxlength="255"
+              />
+            </div>
+            <label for="transactionCategoryFilter" class="sr-only">Danh mục</label>
+            <select id="transactionCategoryFilter">
+              <option value="">Tất cả danh mục</option>
+            </select>
+            <label for="transactionKindFilter" class="sr-only">Loại</label>
+            <select id="transactionKindFilter">
+              <option value="">Thu &amp; chi</option>
+              <option value="expense">Khoản chi</option>
+              <option value="income">Khoản thu</option>
+            </select>
+            <label for="transactionSortSelect" class="sr-only">Sắp xếp</label>
+            <select id="transactionSortSelect">
+              <option value="date_desc">Mới nhất</option>
+              <option value="amount_desc">Tiền giảm dần</option>
+              <option value="amount_asc">Tiền tăng dần</option>
+              <option value="date_asc">Cũ nhất</option>
+            </select>
+          </div>
+
+          <div id="pendingTransactions"></div>
+          <div id="transactionList" aria-live="polite">
+            <p class="empty-copy">Đang tải…</p>
+          </div>
+          <div id="transactionPagination" class="pagination"></div>
+        </section>
       </section>
-      <section id="recurringView" class="workspace-view hidden" aria-label="Khoản định kỳ"
-        ><div class="section-toolbar"
-          ><span id="recurringCount" class="muted small"></span
-          ><button type="button" class="ui-button soft" onclick="openBillEditor()"
-            ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#plus"></use></svg> Thêm
-            khoản</button
-          ></div
-        ><div id="recurringList" class="collection-grid"></div
-      ></section>
-      <section id="goalsView" class="workspace-view hidden" aria-label="Mục tiêu tiết kiệm"
-        ><div class="section-toolbar"
-          ><span id="goalsCount" class="muted small"></span
-          ><button type="button" class="ui-button soft" onclick="openGoalEditor()"
-            ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#plus"></use></svg> Thêm
-            mục tiêu</button
-          ></div
-        ><div id="goalsList" class="collection-grid"></div
-      ></section>
-      <section id="plansView" class="workspace-view hidden" aria-label="Kế hoạch AI">
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <!-- ==================== CỘT TRÁI (4/12): TẠO KẾ HOẠCH MỚI & LỊCH SỬ DB ==================== -->
-          <aside class="lg:col-span-4 space-y-6">
-            <!-- Khung 1: Tạo kế hoạch mới bằng AI -->
-            <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-none">
-              <div class="flex items-center justify-between mb-4">
-                <h2 class="text-base font-semibold text-slate-900 flex items-center gap-2">
-                  <svg class="icon" aria-hidden="true">
-                    <use href="/icons.svg?v=13#sparkles"></use>
-                  </svg>
-                  <span>Tạo kế hoạch</span>
-                </h2>
+
+      <!-- ==================== TAB 2A: KHOẢN ĐỊNH KỲ ==================== -->
+      <section id="recurringView" class="workspace-view hidden" aria-label="Khoản định kỳ">
+        <div class="section-toolbar">
+          <span id="recurringCount" class="muted small"></span>
+          <button type="button" class="ui-button primary small" data-action="open-bill-editor">
+            <svg class="icon icon-xs" aria-hidden="true">
+              <use href="/icons.svg?v=21#plus"></use>
+            </svg>
+            Thêm định kỳ
+          </button>
+        </div>
+        <div id="recurringList" class="collection-grid"></div>
+      </section>
+
+      <!-- ==================== TAB 2B: MỤC TIÊU TIẾT KIỆM ==================== -->
+      <section id="goalsView" class="workspace-view hidden" aria-label="Mục tiêu tiết kiệm">
+        <div class="section-toolbar">
+          <span id="goalsCount" class="muted small"></span>
+          <button type="button" class="ui-button primary small" data-action="open-goal-editor">
+            <svg class="icon icon-xs" aria-hidden="true">
+              <use href="/icons.svg?v=21#plus"></use>
+            </svg>
+            Thêm mục tiêu
+          </button>
+        </div>
+        <div id="goalsList" class="collection-grid"></div>
+      </section>
+
+      <!-- ==================== TAB 2C: KẾ HOẠCH ==================== -->
+      <section id="plansView" class="workspace-view hidden" aria-label="Kế hoạch">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          <!-- Cột trái: Form tối giản 4 trường cốt lõi + Danh sách đã lưu -->
+          <aside class="lg:col-span-4 space-y-4">
+            <div class="surface plan-generator-card">
+              <div class="flex items-center justify-between gap-2 mb-3.5">
+                <h3 class="section-card-title">Tạo kế hoạch</h3>
+                <button
+                  type="button"
+                  class="text-action"
+                  data-action="open-manual-plan-editor"
+                  title="Tạo kế hoạch trống tự nhập"
+                >
+                  + Thủ công
+                </button>
               </div>
 
-              <!-- Chuyển đổi giữa 2 chế độ -->
-              <div
-                class="grid grid-cols-2 gap-2 p-1 bg-slate-50 rounded-xl border border-slate-200 mb-4"
-              >
+              <div class="mode-segmented mb-3.5">
                 <button
                   type="button"
                   id="modeMealBtn"
                   aria-pressed="true"
-                  onclick="switchPlanMode('meal')"
-                  class="py-2.5 px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-indigo-50 text-indigo-700"
+                  data-action="switch-plan-mode"
+                  data-mode="meal"
+                  class="mode-segment-btn active"
                 >
-                  <svg class="icon" aria-hidden="true">
-                    <use href="/icons.svg?v=13#utensils"></use>
-                  </svg>
                   Thực đơn
                 </button>
                 <button
                   type="button"
                   id="modeHangoutBtn"
                   aria-pressed="false"
-                  onclick="switchPlanMode('hangout')"
-                  class="py-2.5 px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-500 hover:text-indigo-700"
+                  data-action="switch-plan-mode"
+                  data-mode="hangout"
+                  class="mode-segment-btn"
                 >
-                  <svg class="icon" aria-hidden="true">
-                    <use href="/icons.svg?v=13#coffee"></use>
-                  </svg>
                   Đi chơi
                 </button>
               </div>
 
-              <form id="planGeneratorForm" onsubmit="handleGeneratePlan(event)" class="space-y-3.5">
+              <form id="planGeneratorForm" class="space-y-3">
                 <input type="hidden" id="planTypeInput" value="meal" />
 
-                <!-- Tên kế hoạch -->
-                <div>
-                  <label
-                    for="planTitleInput"
-                    class="block text-xs font-semibold text-slate-700 mb-1"
-                  >
-                    Tên kế hoạch <span class="text-slate-500 font-normal">(tùy chọn)</span>
-                  </label>
-                  <input
-                    type="text"
-                    id="planTitleInput"
-                    maxlength="255"
-                    placeholder="Thực đơn tuần này"
-                    class="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-500 outline-none transition"
-                  />
-                </div>
-
-                <!-- Ngân sách (VNĐ) -->
-                <div>
+                <div class="editor-field compact-field">
                   <div class="flex justify-between items-center mb-1">
-                    <label for="budgetInput" class="text-xs font-semibold text-slate-700"
-                      >Ngân sách (VNĐ)</label
-                    >
-                    <span id="budgetPreviewBadge" class="text-xs font-semibold text-slate-700"
-                      >500.000 ₫</span
-                    >
+                    <label for="budgetInput" class="mb-0">Ngân sách (VNĐ)</label>
+                    <span id="budgetPreviewBadge" class="muted text-xs font-semibold tabular-nums">
+                      500.000 ₫
+                    </span>
                   </div>
                   <input
                     type="text"
@@ -352,95 +711,79 @@
                     data-money
                     id="budgetInput"
                     value="500.000"
-                    data-money-min="20000"
+                    data-money-min="10000"
                     data-money-max="2000000000"
                     required
-                    oninput="formatMoneyInput(this); updateBudgetPreview(this.value)"
-                    class="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-700 outline-none transition"
                   />
-                  <!-- Nút chọn nhanh ngân sách -->
-                  <div class="flex flex-wrap gap-1.5 mt-2">
+                  <div class="quick-budget-pills mt-2">
                     <button
                       type="button"
-                      onclick="setQuickBudget(200000)"
-                      class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-slate-50 hover:bg-slate-100 hover:text-slate-300 text-slate-700 border border-slate-200 transition"
-                      >200k</button
+                      class="quick-pill"
+                      data-action="quick-budget"
+                      data-amount="200000"
                     >
+                      200k
+                    </button>
                     <button
                       type="button"
-                      onclick="setQuickBudget(300000)"
-                      class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-slate-50 hover:bg-slate-100 hover:text-slate-300 text-slate-700 border border-slate-200 transition"
-                      >300k</button
+                      class="quick-pill"
+                      data-action="quick-budget"
+                      data-amount="300000"
                     >
+                      300k
+                    </button>
                     <button
                       type="button"
-                      onclick="setQuickBudget(500000)"
-                      class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-slate-50 hover:bg-slate-100 hover:text-slate-300 text-slate-700 border border-slate-200 transition"
-                      >500k</button
+                      class="quick-pill"
+                      data-action="quick-budget"
+                      data-amount="500000"
                     >
+                      500k
+                    </button>
                     <button
                       type="button"
-                      onclick="setQuickBudget(1000000)"
-                      class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-slate-50 hover:bg-slate-100 hover:text-slate-300 text-slate-700 border border-slate-200 transition"
-                      >1 Triệu</button
+                      class="quick-pill"
+                      data-action="quick-budget"
+                      data-amount="1000000"
                     >
+                      1tr
+                    </button>
                     <button
                       type="button"
-                      onclick="setQuickBudget(2000000)"
-                      class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-slate-50 hover:bg-slate-100 hover:text-slate-300 text-slate-700 border border-slate-200 transition"
-                      >2 Triệu</button
+                      class="quick-pill"
+                      data-action="quick-budget"
+                      data-amount="2000000"
                     >
+                      2tr
+                    </button>
                   </div>
                 </div>
 
-                <!-- Khu vực & Hình thức -->
-                <div class="grid grid-cols-2 gap-3">
-                  <div>
-                    <label for="regionInput" class="block text-xs font-semibold text-slate-700 mb-1"
-                      >Khu vực</label
-                    >
-                    <select
-                      id="regionInput"
-                      class="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition"
-                    >
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div class="editor-field compact-field">
+                    <label for="regionInput">Khu vực</label>
+                    <select id="regionInput">
                       <option value="TP.HCM">TP.HCM</option>
                       <option value="Hà Nội" selected>Hà Nội</option>
                       <option value="Đà Nẵng">Đà Nẵng</option>
-                      <option value="Khác">Tỉnh thành khác</option>
+                      <option value="Khác">Khác</option>
                     </select>
                   </div>
 
-                  <div>
-                    <label
-                      for="styleModeInput"
-                      class="block text-xs font-semibold text-slate-700 mb-1"
-                      >Hình thức</label
-                    >
-                    <select
-                      id="styleModeInput"
-                      class="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition"
-                    >
-                      <option value="Nấu ăn tại nhà & mang cơm đi làm"
-                        >Nấu tại nhà & mang cơm</option
-                      >
-                      <option value="Cơm gia đình tiết kiệm, đủ chất"
-                        >Cơm gia đình tiết kiệm</option
-                      >
-                      <option value="Thực đơn Eat Clean / Giảm cân">Eat Clean / Giữ dáng</option>
-                      <option value="Sinh viên / Người ở trọ bận rộn">Sinh viên / Nấu nhanh</option>
+                  <div class="editor-field compact-field">
+                    <label for="styleModeInput">Hình thức</label>
+                    <select id="styleModeInput">
+                      <option value="Nấu ăn tại nhà &amp; mang cơm đi làm">Nấu tại nhà</option>
+                      <option value="Cơm gia đình tiết kiệm, đủ chất">Cơm gia đình</option>
+                      <option value="Thực đơn Eat Clean / Giảm cân">Eat Clean</option>
+                      <option value="Sinh viên / Người ở trọ bận rộn">Nấu nhanh</option>
                     </select>
                   </div>
                 </div>
 
-                <!-- Thời lượng & Số người -->
-                <div class="grid grid-cols-2 gap-3">
-                  <div>
-                    <label
-                      for="durationInput"
-                      id="durationLabel"
-                      class="block text-xs font-semibold text-slate-700 mb-1"
-                      >Thời lượng</label
-                    >
+                <div class="grid grid-cols-2 gap-2.5">
+                  <div class="editor-field compact-field">
+                    <label for="durationInput" id="durationLabel">Thời lượng</label>
                     <input
                       type="text"
                       id="durationInput"
@@ -448,14 +791,11 @@
                       value="7 ngày"
                       required
                       placeholder="7 ngày"
-                      class="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none transition"
                     />
                   </div>
 
-                  <div>
-                    <label for="peopleInput" class="block text-xs font-semibold text-slate-700 mb-1"
-                      >Số người</label
-                    >
+                  <div class="editor-field compact-field">
+                    <label for="peopleInput">Số người</label>
                     <input
                       type="text"
                       id="peopleInput"
@@ -463,756 +803,888 @@
                       value="2 người"
                       required
                       placeholder="2 người"
-                      class="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-sm text-slate-900 outline-none transition"
                     />
                   </div>
                 </div>
 
-                <!-- Yêu cầu riêng -->
-                <div>
-                  <label
-                    for="preferencesInput"
-                    class="block text-xs font-semibold text-slate-700 mb-1"
-                    >Yêu cầu riêng</label
-                  >
-                  <textarea
-                    id="preferencesInput"
-                    maxlength="1800"
-                    rows="2"
-                    placeholder="Khẩu vị, món cần tránh…"
-                    class="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-sm text-slate-900 placeholder-slate-500 outline-none transition"
-                  ></textarea>
-                </div>
+                <!-- Gom toàn bộ trường phụ vào mục thu gọn Tùy chọn thêm -->
+                <details class="plan-options">
+                  <summary>Tùy chọn thêm</summary>
+                  <div class="space-y-3 pt-2.5">
+                    <div class="editor-field compact-field">
+                      <label for="planTitleInput">Tên kế hoạch</label>
+                      <input
+                        type="text"
+                        id="planTitleInput"
+                        maxlength="255"
+                        placeholder="Thực đơn tuần"
+                      />
+                    </div>
+                    <div class="editor-field compact-field">
+                      <label for="preferencesInput">Yêu cầu riêng</label>
+                      <textarea
+                        id="preferencesInput"
+                        maxlength="1800"
+                        rows="2"
+                        placeholder="Khẩu vị, dị ứng…"
+                      ></textarea>
+                    </div>
+                    <div class="editor-field compact-field">
+                      <label for="pantryInput">Nguyên liệu sẵn có</label>
+                      <textarea
+                        id="pantryInput"
+                        rows="2"
+                        maxlength="2000"
+                        placeholder="Trứng, gạo, hành tỏi…"
+                      ></textarea>
+                    </div>
+                    <button type="button" class="text-action" data-action="open-preferences">
+                      Cài đặt khẩu vị mặc định →
+                    </button>
+                  </div>
+                </details>
 
-                <details class="plan-options"
-                  ><summary>Tùy chỉnh thêm</summary
-                  ><div class="space-y-3 pt-3"
-                    ><label for="pantryInput" class="block text-xs font-semibold text-slate-700"
-                      >Nguyên liệu đang có</label
-                    ><textarea
-                      id="pantryInput"
-                      rows="2"
-                      maxlength="2000"
-                      placeholder="Trứng, gạo, rau trong tủ lạnh…"
-                      class="w-full border px-3 py-2"
-                    ></textarea
-                    ><button type="button" class="ui-button quiet" onclick="openPreferencesEditor()"
-                      >Sở thích mặc định</button
-                    ></div
-                  ></details
-                >
-                <!-- Nút Submit -->
-                <button
-                  type="submit"
-                  id="generateSubmitBtn"
-                  class="w-full py-3 px-4 rounded-xl font-semibold text-sm text-white bg-indigo-600 hover:bg-indigo-500 shadow-none transition flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <span id="generateBtnIcon"
-                    ><svg class="icon" aria-hidden="true">
-                      <use href="/icons.svg?v=13#sparkles"></use></svg
-                  ></span>
+                <button type="submit" id="generateSubmitBtn" class="ui-button primary w-full">
                   <span id="generateBtnText">Tạo kế hoạch</span>
                 </button>
               </form>
             </div>
 
-            <!-- Khung 2: Kế hoạch đã lưu -->
-            <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-none">
-              <div class="flex items-center justify-between mb-3">
-                <h2 class="text-base font-semibold text-slate-900 flex items-center gap-2">
-                  <span
-                    ><svg class="icon" aria-hidden="true">
-                      <use href="/icons.svg?v=13#folder"></use>
-                    </svg>
-                    Kế hoạch đã lưu</span
-                  >
-                </h2>
+            <!-- Danh sách kế hoạch đã lưu -->
+            <div class="surface">
+              <div class="flex items-center justify-between mb-2.5">
+                <h3 class="section-card-title">Đã lưu</h3>
                 <button
-                  onclick="loadPlansFromDB()"
-                  class="text-xs text-slate-500 hover:text-slate-300 transition flex items-center gap-1"
-                  title="Tải lại từ Database"
+                  type="button"
+                  data-action="reload-plans"
+                  class="text-action"
+                  title="Làm mới danh sách"
                 >
-                  <svg class="icon" aria-hidden="true">
-                    <use href="/icons.svg?v=13#refresh-cw"></use>
-                  </svg>
                   Làm mới
                 </button>
               </div>
 
-              <!-- Bộ lọc nhanh lịch sử -->
-              <div class="flex gap-1.5 mb-3">
-                <button
-                  id="historyFilterAll"
-                  aria-pressed="true"
-                  onclick="setHistoryFilter('all')"
-                  class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100"
-                  >Tất cả</button
-                >
-                <button
-                  id="historyFilterMeal"
-                  aria-pressed="false"
-                  onclick="setHistoryFilter('meal')"
-                  class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-50 text-slate-500 hover:text-indigo-700"
-                  ><svg class="icon" aria-hidden="true">
-                    <use href="/icons.svg?v=13#utensils"></use>
-                  </svg>
-                  Thực đơn</button
-                >
-                <button
-                  id="historyFilterHangout"
-                  aria-pressed="false"
-                  onclick="setHistoryFilter('hangout')"
-                  class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-50 text-slate-500 hover:text-indigo-700"
-                  ><svg class="icon" aria-hidden="true">
-                    <use href="/icons.svg?v=13#coffee"></use>
-                  </svg>
-                  Đi chơi</button
-                >
+              <div class="search-field mb-2.5">
+                <svg class="icon icon-xs" aria-hidden="true">
+                  <use href="/icons.svg?v=21#search"></use>
+                </svg>
+                <label for="planSearchInput" class="sr-only">Tìm kế hoạch</label>
+                <input
+                  id="planSearchInput"
+                  type="search"
+                  maxlength="120"
+                  placeholder="Tìm kế hoạch…"
+                />
               </div>
 
-              <!-- Danh sách các kế hoạch -->
+              <div class="flex flex-wrap gap-1.5 mb-3">
+                <button
+                  type="button"
+                  id="historyFilterAll"
+                  aria-pressed="true"
+                  data-action="filter-plans"
+                  data-filter="all"
+                  class="filter-chip active"
+                >
+                  Tất cả
+                </button>
+                <button
+                  type="button"
+                  id="historyFilterMeal"
+                  aria-pressed="false"
+                  data-action="filter-plans"
+                  data-filter="meal"
+                  class="filter-chip"
+                >
+                  Thực đơn
+                </button>
+                <button
+                  type="button"
+                  id="historyFilterHangout"
+                  aria-pressed="false"
+                  data-action="filter-plans"
+                  data-filter="hangout"
+                  class="filter-chip"
+                >
+                  Đi chơi
+                </button>
+              </div>
+
+              <div id="plansHistoryList" class="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+                <div class="empty-copy">Đang tải…</div>
+              </div>
               <button
                 type="button"
                 id="morePlansButton"
-                class="ui-button soft small hidden"
-                onclick="loadPlansFromDB(null, true)"
-                >Tải thêm kế hoạch</button
+                class="ui-button quiet small w-full mt-2.5 hidden"
+                data-action="load-more-plans"
               >
-              <div id="plansHistoryList" class="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
-                <div class="text-center py-8 text-slate-500 text-xs"> Đang tải kế hoạch… </div>
-              </div>
+                Xem thêm
+              </button>
             </div>
           </aside>
 
-          <!-- ==================== KHU VỰC CHÍNH (8/12): DASHBOARD CHI TIẾT KẾ HOẠCH ==================== -->
-          <section class="lg:col-span-8 space-y-6">
-            <!-- 4 THẺ THỐNG KÊ (STAT CARDS) -->
-            <div class="stats-grid grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-              <!-- Card 1: Ngân sách gốc -->
-              <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-none">
-                <div
-                  class="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1"
-                >
-                  <span>Ngân sách</span>
-                  <svg class="icon" aria-hidden="true">
-                    <use href="/icons.svg?v=13#wallet"></use>
-                  </svg>
-                </div>
-                <div id="statTotalBudget" class="text-lg sm:text-xl font-semibold text-slate-900"
-                  >0 ₫</div
-                >
+          <!-- Khu vực chính: Chi tiết kế hoạch -->
+          <section id="planWorkspaceMain" class="lg:col-span-8 space-y-4">
+            <div class="stats-grid grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div class="plan-stat-card">
+                <span class="finance-stat-label">Ngân sách</span>
+                <div id="statTotalBudget">0 ₫</div>
               </div>
 
-              <!-- Card 2: Chi phí AI dự kiến -->
-              <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-none">
-                <div
-                  class="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1"
-                >
-                  <span>Dự kiến</span>
-                  <svg class="icon" aria-hidden="true">
-                    <use href="/icons.svg?v=13#chart-pie"></use>
-                  </svg>
-                </div>
-                <div id="statEstimatedCost" class="text-lg sm:text-xl font-semibold text-slate-700"
-                  >0 ₫</div
-                >
+              <div class="plan-stat-card">
+                <span class="finance-stat-label">Dự kiến</span>
+                <div id="statEstimatedCost">0 ₫</div>
               </div>
 
-              <!-- Card 3: Đã chi tiêu thực tế (Actual Spent) -->
-              <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-none">
-                <div
-                  class="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1"
-                >
-                  <span>Đã chi</span>
-                  <svg class="icon" aria-hidden="true">
-                    <use href="/icons.svg?v=13#circle-check"></use>
-                  </svg>
-                </div>
-                <div id="statActualSpent" class="text-lg sm:text-xl font-semibold text-slate-700"
-                  >0 ₫</div
-                >
+              <div class="plan-stat-card">
+                <span class="finance-stat-label">Đã chi</span>
+                <div id="statActualSpent">0 ₫</div>
               </div>
 
-              <!-- Card 4: Số dư còn lại -->
-              <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-none">
-                <div
-                  class="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1"
-                >
-                  <span>Còn lại</span>
-                  <svg class="icon" aria-hidden="true">
-                    <use href="/icons.svg?v=13#piggy-bank"></use>
-                  </svg>
-                </div>
-                <div id="statRemaining" class="text-lg sm:text-xl font-semibold text-slate-700"
-                  >0 ₫</div
-                >
+              <div class="plan-stat-card">
+                <span class="finance-stat-label">Còn lại</span>
+                <div id="statRemaining">0 ₫</div>
               </div>
             </div>
 
-            <!-- TRẠNG THÁI CHƯA CHỌN KẾ HOẠCH (EMPTY STATE) -->
-            <div
-              id="emptyDashboardState"
-              class="bg-white border border-slate-200 rounded-xl p-10 text-center shadow-none"
-            >
-              <div
-                class="w-16 h-16 mx-auto mb-4 rounded-xl bg-slate-100 border border-slate-200/80 flex items-center justify-center text-3xl"
-              >
-                <img src="/icons/smartspend-192.png" width="32" height="32" alt="" />
-              </div>
-              <h3 class="text-lg font-semibold text-slate-900 mb-2"
-                >Chưa có kế hoạch nào đang mở</h3
-              >
-              <p class="text-sm text-slate-500 max-w-lg mx-auto mb-6">
-                Nhập ngân sách và tạo kế hoạch đầu tiên của bạn.
+            <!-- Empty state -->
+            <div id="emptyDashboardState" class="surface empty-plan-hero text-center">
+              <h3 class="text-base font-semibold mb-1.5">Chưa chọn kế hoạch</h3>
+              <p class="muted small max-w-sm mx-auto mb-4">
+                Nhập ngân sách bên trái để lập kế hoạch mới hoặc tự tạo danh sách riêng.
               </p>
+              <button type="button" class="ui-button quiet" data-action="open-manual-plan-editor">
+                Tạo thủ công
+              </button>
             </div>
 
-            <!-- NỘI DUNG CHI TIẾT KẾ HOẠCH (HIỂN THỊ KHI ĐÃ CHỌN 1 KẾ HOẠCH) -->
-            <div id="planDashboardContent" class="hidden space-y-6">
-              <!-- Header của Kế hoạch đang mở -->
-              <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-none">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <div class="flex flex-wrap items-center gap-2 mb-2">
-                      <span
-                        id="activePlanTypeBadge"
-                        class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100"
-                      >
-                        <svg class="icon" aria-hidden="true">
-                          <use href="/icons.svg?v=13#utensils"></use>
-                        </svg>
-                        Thực đơn
-                      </span>
-                      <span
-                        id="activePlanRegionBadge"
-                        class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-50 text-slate-700"
-                      >
-                        <svg class="icon" aria-hidden="true">
-                          <use href="/icons.svg?v=13#map-pin"></use>
-                        </svg>
-                        Hà Nội
-                      </span>
-                      <span
-                        id="activePlanDateBadge"
-                        class="px-2.5 py-0.5 rounded-full text-xs text-slate-500 bg-slate-100"
-                      >
-                        <svg class="icon" aria-hidden="true">
-                          <use href="/icons.svg?v=13#clock-3"></use>
-                        </svg>
-                        Hôm nay
-                      </span>
+            <!-- Active Plan Content -->
+            <div id="planDashboardContent" class="hidden space-y-4">
+              <div class="surface">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <div class="plan-meta-inline">
+                      <span id="activePlanTypeBadge">Thực đơn</span>
+                      <span aria-hidden="true">·</span>
+                      <span id="activePlanRegionBadge">Hà Nội</span>
+                      <span aria-hidden="true">·</span>
+                      <span id="activePlanDateBadge">Hôm nay</span>
                     </div>
-                    <h2
-                      id="activePlanTitle"
-                      class="text-xl sm:text-2xl font-semibold text-slate-900"
-                    >
-                      Tiêu đề kế hoạch
-                    </h2>
+                    <h2 id="activePlanTitle" class="active-plan-title">Tiêu đề kế hoạch</h2>
                   </div>
 
-                  <div class="flex items-center gap-2">
+                  <!-- Chỉ giữ 1 nút chính + Menu 3 chấm (...) gom hành động phụ -->
+                  <div class="flex items-center gap-1.5 flex-shrink-0">
                     <button
                       type="button"
-                      onclick="copyActivePlan()"
-                      class="ui-button quiet"
-                      title="Tạo bản sao chưa hoàn thành"
-                      ><svg class="icon" aria-hidden="true">
-                        <use href="/icons.svg?v=13#copy"></use>
-                      </svg>
-                      Sao chép</button
+                      data-action="edit-active-plan"
+                      class="ui-button quiet small"
                     >
-                    <button
-                      onclick="refreshActivePlan()"
-                      class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition flex items-center gap-1.5"
-                    >
-                      <svg class="icon" aria-hidden="true">
-                        <use href="/icons.svg?v=13#refresh-cw"></use>
-                      </svg>
-                      Đồng bộ
+                      Sửa
                     </button>
-                    <button
-                      onclick="deletePlanById(currentPlan?.id)"
-                      class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-100 text-slate-700 hover:text-indigo-700 border border-slate-200/80 transition flex items-center gap-1.5"
-                    >
-                      <svg class="icon" aria-hidden="true">
-                        <use href="/icons.svg?v=13#trash-2"></use>
-                      </svg>
-                      Xóa kế hoạch
-                    </button>
+                    <details class="item-menu plan-actions-menu">
+                      <summary aria-label="Tác vụ khác">
+                        <svg class="icon" aria-hidden="true">
+                          <use href="/icons.svg?v=21#ellipsis"></use>
+                        </svg>
+                      </summary>
+                      <div>
+                        <button type="button" data-action="copy-plan-text">
+                          <svg class="icon icon-xs" aria-hidden="true">
+                            <use href="/icons.svg?v=21#clipboard-check"></use>
+                          </svg>
+                          Chép văn bản
+                        </button>
+                        <button type="button" data-action="copy-active-plan">
+                          <svg class="icon icon-xs" aria-hidden="true">
+                            <use href="/icons.svg?v=21#copy"></use>
+                          </svg>
+                          Nhân bản
+                        </button>
+                        <button type="button" data-action="refresh-active-plan">
+                          <svg class="icon icon-xs" aria-hidden="true">
+                            <use href="/icons.svg?v=21#refresh-cw"></use>
+                          </svg>
+                          Đồng bộ lại
+                        </button>
+                        <button type="button" class="danger-item" data-action="delete-active-plan">
+                          <svg class="icon icon-xs" aria-hidden="true">
+                            <use href="/icons.svg?v=21#trash-2"></use>
+                          </svg>
+                          Xóa kế hoạch
+                        </button>
+                      </div>
+                    </details>
                   </div>
                 </div>
 
                 <p id="legacyPlanNotice" class="legacy-plan-notice hidden"></p>
-                <!-- Thanh tiến độ chi tiêu thực tế -->
-                <div class="mt-4 pt-4 border-t border-slate-200/80">
-                  <div class="flex flex-wrap justify-between text-xs mb-1.5 gap-2">
-                    <span class="text-slate-700">
-                      Đã chi: <strong id="barActualLabel" class="text-slate-700">0 ₫</strong>
-                      <span class="text-slate-500"
-                        >/ Dự kiến:
-                        <strong id="barEstimatedLabel" class="text-slate-700">0 ₫</strong></span
-                      >
+
+                <div class="mt-3.5 pt-3.5 plan-progress-divider">
+                  <div class="flex flex-wrap justify-between text-xs mb-2 gap-2 tabular-nums">
+                    <span class="muted">
+                      Đã chi <strong id="barActualLabel" class="text-strong">0 ₫</strong> / Dự kiến
+                      <strong id="barEstimatedLabel" class="text-strong">0 ₫</strong>
                     </span>
-                    <span id="barPercentLabel" class="font-semibold text-slate-700"
-                      >0% ngân sách</span
-                    >
+                    <span id="barPercentLabel" class="font-semibold">0%</span>
                   </div>
-                  <div
-                    class="w-full h-3 bg-slate-50 rounded-full overflow-hidden relative border border-slate-200"
-                  >
-                    <div
-                      id="barEstimatedFill"
-                      class="h-full bg-slate-600 absolute top-0 left-0 transition-all duration-300"
-                      style="width: 0%"
-                    ></div>
-                    <div
-                      id="barActualFill"
-                      class="h-full bg-indigo-500 absolute top-0 left-0 transition-all duration-300"
-                      style="width: 0%"
-                    ></div>
+                  <div class="plan-progress-track">
+                    <div id="barEstimatedFill" style="width: 0%"></div>
+                    <div id="barActualFill" style="width: 0%"></div>
                   </div>
+                </div>
+
+                <!-- Thu gọn Mẹo chi tiêu & Biểu đồ để ưu tiên danh sách mua sắm bên dưới -->
+                <div class="plan-Inline-disclosures mt-3">
+                  <details id="planAdviceDisclosure" class="plan-tips-disclosure">
+                    <summary>Xem mẹo chi tiêu</summary>
+                    <ul id="activePlanAdvice" class="plan-tips-list"></ul>
+                  </details>
+
+                  <details id="planChartDisclosure" class="plan-tips-disclosure">
+                    <summary>Xem biểu đồ phân bổ</summary>
+                    <div class="pt-3">
+                      <div class="flex items-center justify-end gap-1 mb-2">
+                        <button
+                          type="button"
+                          id="chartTypeDoughnutBtn"
+                          aria-pressed="true"
+                          data-action="switch-chart-type"
+                          data-chart-type="doughnut"
+                          class="filter-chip active"
+                        >
+                          Tỷ lệ
+                        </button>
+                        <button
+                          type="button"
+                          id="chartTypeBarBtn"
+                          aria-pressed="false"
+                          data-action="switch-chart-type"
+                          data-chart-type="bar"
+                          class="filter-chip"
+                        >
+                          So sánh
+                        </button>
+                      </div>
+                      <div class="relative h-48 w-full flex items-center justify-center">
+                        <canvas id="financeChartCanvas"></canvas>
+                      </div>
+                    </div>
+                  </details>
                 </div>
               </div>
 
-              <!-- BIỂU ĐỒ TÀI CHÍNH (CHART.JS DOUGHNUT & BAR CHART) + LỜI KHUYÊN AI -->
-              <div class="analysis-grid grid grid-cols-1 md:grid-cols-12 gap-6">
-                <!-- Biểu đồ Chart.js (7/12) -->
-                <div
-                  class="md:col-span-7 bg-white border border-slate-200 rounded-xl p-5 shadow-none"
-                >
-                  <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                      <svg class="icon" aria-hidden="true">
-                        <use href="/icons.svg?v=13#chart-pie"></use>
-                      </svg>
-                      <span>Phân bổ ngân sách</span>
-                    </h3>
-                    <div class="flex gap-1">
+              <!-- Checklist cho Thực đơn -->
+              <div id="mealPlanSections" class="space-y-4 hidden">
+                <div class="surface">
+                  <div class="section-toolbar pb-3 mb-3 plan-progress-divider-bottom flex-wrap">
+                    <div class="flex items-center gap-2">
+                      <h3 class="section-card-title">Đi chợ</h3>
+                      <span id="groceryCountBadge" class="muted small tabular-nums">0/0</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1.5">
                       <button
-                        id="chartTypeDoughnutBtn"
-                        aria-pressed="true"
-                        onclick="switchChartType('doughnut')"
-                        class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100"
-                      >
-                        Tỷ lệ
-                      </button>
-                      <button
-                        id="chartTypeBarBtn"
+                        type="button"
+                        class="ui-button quiet small"
+                        data-action="toggle-hide-completed"
+                        data-default-label="Ẩn đã mua"
                         aria-pressed="false"
-                        onclick="switchChartType('bar')"
-                        class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-50 text-slate-500 hover:text-indigo-700"
                       >
-                        So sánh
+                        <svg class="icon icon-xs" aria-hidden="true">
+                          <use href="/icons.svg?v=21#eye-off"></use>
+                        </svg>
+                        <span>Ẩn đã mua</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="ui-button primary small"
+                        data-action="open-add-plan-item"
+                        data-item-category="grocery"
+                      >
+                        + Thêm món
                       </button>
                     </div>
                   </div>
-                  <div class="relative h-56 w-full flex items-center justify-center">
-                    <canvas id="financeChartCanvas"></canvas>
-                  </div>
+                  <div id="groceryChecklistContainer" class="space-y-2"></div>
                 </div>
 
-                <!-- Lời khuyên tài chính từ AI (5/12) -->
-                <div
-                  class="md:col-span-5 bg-white border border-slate-200/80 rounded-xl p-5 shadow-none flex flex-col justify-between"
-                >
-                  <div>
-                    <div
-                      class="flex items-center gap-2 text-slate-700 font-semibold text-sm mb-2.5"
+                <div class="surface">
+                  <div class="section-toolbar pb-3 mb-3 plan-progress-divider-bottom">
+                    <div class="flex items-center gap-2">
+                      <h3 class="section-card-title">Thực đơn ngày</h3>
+                      <span id="dailyMenuCountBadge" class="muted small tabular-nums">0 ngày</span>
+                    </div>
+                    <button
+                      type="button"
+                      class="ui-button quiet small"
+                      data-action="open-add-plan-item"
+                      data-item-category="daily_menu"
                     >
-                      <svg class="icon" aria-hidden="true">
-                        <use href="/icons.svg?v=13#lightbulb"></use>
+                      + Thêm ngày
+                    </button>
+                  </div>
+                  <div id="dailyMenuChecklistContainer" class="space-y-2"></div>
+                </div>
+              </div>
+
+              <!-- Checklist cho Đi chơi -->
+              <div id="hangoutPlanSection" class="surface hidden">
+                <div class="section-toolbar pb-3 mb-3 plan-progress-divider-bottom flex-wrap">
+                  <div class="flex items-center gap-2">
+                    <h3 class="section-card-title">Lịch trình</h3>
+                    <span id="activityCountBadge" class="muted small tabular-nums">0/0</span>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      class="ui-button quiet small"
+                      data-action="toggle-hide-completed"
+                      data-default-label="Ẩn đã xong"
+                      aria-pressed="false"
+                    >
+                      <svg class="icon icon-xs" aria-hidden="true">
+                        <use href="/icons.svg?v=21#eye-off"></use>
                       </svg>
-                      <span>Đề xuất</span><span class="estimate-label">Giá ước tính</span>
-                    </div>
-                    <p
-                      id="activePlanAdvice"
-                      class="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line"
+                      <span>Ẩn đã xong</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="ui-button primary small"
+                      data-action="open-add-plan-item"
+                      data-item-category="activity"
                     >
-                      Chưa có đề xuất.
-                    </p>
+                      + Thêm chặng
+                    </button>
                   </div>
                 </div>
-              </div>
-
-              <!-- DANH SÁCH CHI TIẾT CÓ TƯƠNG TÁC DATABASE (INTERACTIVE CHECKLIST) -->
-              <div id="mealPlanSections" class="space-y-6 hidden">
-                <!-- Khu vực 1: Danh sách đi chợ -->
-                <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-none">
-                  <div
-                    class="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-200"
-                  >
-                    <div>
-                      <h3 class="text-base font-semibold text-slate-900 flex items-center gap-2">
-                        <span
-                          ><svg class="icon" aria-hidden="true">
-                            <use href="/icons.svg?v=13#shopping-cart"></use>
-                          </svg>
-                          Danh sách đi chợ</span
-                        >
-                        <span
-                          id="groceryCountBadge"
-                          class="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold"
-                          >0 mục</span
-                        >
-                      </h3>
-                    </div>
-                  </div>
-                  <p class="text-xs text-slate-500 mb-3"
-                    >Tích mục có giá để ghi chi và cập nhật biểu đồ. Bỏ tích hủy khoản chi tự động;
-                    mục 0 ₫ chỉ đánh dấu hoàn thành.</p
-                  >
-                  <div id="groceryChecklistContainer" class="space-y-2.5"></div>
-                </div>
-
-                <!-- Khu vực 2: Thực đơn chi tiết từng ngày -->
-                <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-none">
-                  <div
-                    class="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-200"
-                  >
-                    <div>
-                      <h3 class="text-base font-semibold text-slate-900 flex items-center gap-2">
-                        <span
-                          ><svg class="icon" aria-hidden="true">
-                            <use href="/icons.svg?v=13#calendar-days"></use>
-                          </svg>
-                          Thực đơn theo ngày</span
-                        >
-                        <span
-                          id="dailyMenuCountBadge"
-                          class="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold"
-                          >0 ngày</span
-                        >
-                      </h3>
-                    </div>
-                  </div>
-                  <div id="dailyMenuChecklistContainer" class="space-y-2.5"></div>
-                </div>
-              </div>
-
-              <!-- Khu vực dành cho Đi chơi (Hangout) -->
-              <div
-                id="hangoutPlanSection"
-                class="bg-white border border-slate-200 rounded-xl p-5 shadow-none hidden"
-              >
-                <div
-                  class="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-200"
-                >
-                  <div>
-                    <h3 class="text-base font-semibold text-slate-900 flex items-center gap-2">
-                      <span
-                        ><svg class="icon" aria-hidden="true">
-                          <use href="/icons.svg?v=13#coffee"></use>
-                        </svg>
-                        Lịch trình</span
-                      >
-                      <span
-                        id="activityCountBadge"
-                        class="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold"
-                        >0 chặng</span
-                      >
-                    </h3>
-                  </div>
-                </div>
-                <p class="text-xs text-slate-500 mb-3"
-                  >Tích mục có giá để ghi chi và cập nhật biểu đồ. Bỏ tích hủy khoản chi tự động.</p
-                >
-                <div id="activityChecklistContainer" class="space-y-2.5"></div>
+                <div id="activityChecklistContainer" class="space-y-2"></div>
               </div>
             </div>
           </section>
         </div>
       </section>
+
+      <!-- ==================== TAB 3: TÀI KHOẢN ==================== -->
       <section id="accountView" class="workspace-view hidden" aria-label="Tài khoản">
-        <div class="account-profile surface"
-          ><img src="/icons/smartspend-192.png" width="52" height="52" alt="" /><div
-            ><span class="muted small">Đang đăng nhập</span><h3 id="accountName"></h3
-            ><p class="muted small">Chi tiêu, kế hoạch và dữ liệu thuộc sổ riêng của bạn.</p></div
-          ></div
-        >
+        <div class="account-profile surface">
+          <img src="/icons/smartspend-192.png" width="44" height="44" alt="" />
+          <div class="min-w-0 flex-1">
+            <span class="muted text-xs">Tài khoản</span>
+            <h3 id="accountName">chuso</h3>
+          </div>
+        </div>
+
         <div class="surface account-actions">
-          <button type="button" onclick="openIphoneModal()"
-            ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#smartphone"></use></svg
-            ><span
-              >Cài app trên iPhone<small>Mã QR và hướng dẫn thêm vào màn hình chính</small></span
-            ><svg class="icon" aria-hidden="true">
-              <use href="/icons.svg?v=13#chevron-right"></use></svg
-          ></button>
-          <button type="button" onclick="openPreferencesEditor()"
-            ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#settings-2"></use></svg
-            ><span
-              >Sở thích lập kế hoạch<small>Số người, khẩu vị và nguyên liệu cần tránh</small></span
-            ><svg class="icon" aria-hidden="true">
-              <use href="/icons.svg?v=13#chevron-right"></use></svg
-          ></button>
-          <div class="operator-connection"
-            ><button
-              id="dbStatusBadge"
-              data-server-config
-              onclick="openSettingsModal()"
-              class="hidden flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer bg-slate-100 border-slate-200/80 text-slate-700 hover:bg-slate-100"
-              title="Bấm để cấu hình Supabase PostgreSQL hoặc Gemini API Key"
-            >
-              <span id="dbStatusDot" class="w-2 h-2 rounded-full bg-slate-100"></span>
-              <span id="dbStatusText"
-                ><svg class="icon" aria-hidden="true">
-                  <use href="/icons.svg?v=13#folder"></use>
-                </svg>
-                Local SQLite</span
-              >
-            </button></div
-          >
           <button
-            id="logoutButton"
+            id="openSettingsAction"
             type="button"
-            onclick="logoutAccess()"
-            class="logout-action hidden"
-            ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#log-out"></use></svg
-            ><span>Đăng xuất</span></button
+            data-server-config
+            data-action="open-settings-modal"
+            class="hidden"
           >
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#settings-2"></use>
+            </svg>
+            <span>Cài đặt AI &amp; Dữ liệu</span>
+            <span id="dbStatusBadge" class="status-pill">
+              <span id="dbStatusDot" class="status-dot"></span>
+              <span id="dbStatusText">SQLite</span>
+            </span>
+          </button>
+
+          <button type="button" data-action="open-iphone-modal">
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#smartphone"></use>
+            </svg>
+            <span>Cài lên điện thoại (PWA)</span>
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#chevron-right"></use>
+            </svg>
+          </button>
+
+          <button type="button" data-action="open-preferences">
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#utensils"></use>
+            </svg>
+            <span>Khẩu vị &amp; Sở thích mặc định</span>
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#chevron-right"></use>
+            </svg>
+          </button>
+
+          <button type="button" data-action="open-backup-center">
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#download"></use>
+            </svg>
+            <span>Sao lưu &amp; Nhập dữ liệu</span>
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#chevron-right"></use>
+            </svg>
+          </button>
+
+          <button type="button" data-action="open-archive-center">
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#archive"></use>
+            </svg>
+            <span>Kho lưu trữ &amp; Thùng rác</span>
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#chevron-right"></use>
+            </svg>
+          </button>
+
+          <button
+            id="changePasswordButton"
+            type="button"
+            data-action="open-change-password"
+            class="hidden"
+          >
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#key-round"></use>
+            </svg>
+            <span>Đổi mật khẩu</span>
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#chevron-right"></use>
+            </svg>
+          </button>
+
+          <button
+            id="logoutAllButton"
+            type="button"
+            data-action="logout-all-devices"
+            class="logout-action hidden"
+          >
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#shield-check"></use>
+            </svg>
+            <span>Đăng xuất mọi thiết bị</span>
+          </button>
+
+          <button id="logoutButton" type="button" data-action="logout" class="logout-action hidden">
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#log-out"></use>
+            </svg>
+            <span>Đăng xuất</span>
+          </button>
         </div>
       </section>
     </main>
 
-    <!-- ==================== MODAL 1: CÀI ĐẶT API & CLOUD DB (<svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#settings-2"></use></svg>) ==================== -->
+    <!-- ==================== MODAL 1: CÀI ĐẶT HỆ THỐNG ==================== -->
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Cài đặt kết nối"
       data-private
       id="settingsModal"
-      class="fixed inset-0 z-50 bg-slate-900/35 backdrop-blur-sm hidden flex items-center justify-center p-4"
+      class="modal-backdrop fixed inset-0 z-50 hidden items-center justify-center p-4"
     >
-      <div
-        class="bg-white border border-slate-200 rounded-xl max-w-lg w-full shadow-none overflow-hidden"
-      >
-        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-          <h3 class="text-base font-semibold text-slate-900 flex items-center gap-2">
-            <span
-              ><svg class="icon" aria-hidden="true">
-                <use href="/icons.svg?v=13#settings-2"></use>
-              </svg>
-              Cài đặt kết nối</span
-            >
-          </h3>
+      <div class="finance-dialog max-w-lg w-full">
+        <div class="dialog-header">
+          <h3>Cài đặt AI &amp; Dữ liệu</h3>
           <button
-            aria-label="Đóng cài đặt"
-            onclick="closeSettingsModal()"
-            class="text-slate-500 hover:text-indigo-700 text-lg"
-            ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#x"></use></svg
-          ></button>
+            type="button"
+            aria-label="Đóng"
+            data-action="close-settings-modal"
+            class="icon-button"
+          >
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#x"></use>
+            </svg>
+          </button>
         </div>
 
-        <form onsubmit="handleSaveConfig(event)" class="p-5 space-y-4">
-          <div>
-            <label for="configApiKeyInput" class="block text-xs font-semibold text-slate-700 mb-1">
-              Gemini API Key <span class="text-rose-600">*</span>
+        <form id="settingsForm">
+          <div class="dialog-body space-y-3.5">
+            <div class="editor-field mb-0">
+              <div class="flex items-center justify-between mb-1">
+                <label for="configApiKeyInput" class="mb-0">Gemini API Key</label>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-action text-xs"
+                >
+                  Lấy khóa →
+                </a>
+              </div>
+              <input type="password" id="configApiKeyInput" maxlength="512" placeholder="AIzaSy…" />
+            </div>
+
+            <div class="editor-field mb-0">
+              <label for="configDbUrlInput">PostgreSQL URL</label>
+              <input
+                type="text"
+                id="configDbUrlInput"
+                maxlength="2048"
+                placeholder="Để trống nếu dùng SQLite trên máy"
+              />
+            </div>
+
+            <div class="editor-field mb-0">
+              <label for="configCloudUrlInput">Địa chỉ Cloud HTTPS</label>
+              <input
+                type="url"
+                id="configCloudUrlInput"
+                maxlength="512"
+                placeholder="https://smartspend.example.com"
+              />
+            </div>
+
+            <label class="config-option">
+              <input id="configAllowLanInput" type="checkbox" />
+              <span>Cho phép điện thoại cùng Wi-Fi truy cập (cần khởi động lại app)</span>
             </label>
-            <input
-              type="password"
-              id="configApiKeyInput"
-              placeholder="AIzaSy..."
-              class="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 outline-none"
-            />
-            <p class="text-[11px] text-slate-500 mt-1">
-              Tạo khóa tại
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                class="text-slate-700 underline"
-                >Google AI Studio</a
-              >.
-            </p>
+
+            <div id="configModalStatusBox" class="status-info-box">Đang kiểm tra…</div>
+
+            <details id="configClearOptions" class="plan-options">
+              <summary>Đặt lại cấu hình</summary>
+              <label class="config-option">
+                <input id="clearApiKeyInput" type="checkbox" /> Xóa Gemini API Key
+              </label>
+              <label class="config-option">
+                <input id="clearDbUrlInput" type="checkbox" /> Quay về SQLite trên máy
+              </label>
+              <label class="config-option">
+                <input id="clearCloudUrlInput" type="checkbox" /> Xóa địa chỉ Cloud HTTPS
+              </label>
+            </details>
           </div>
 
-          <div>
-            <label for="configDbUrlInput" class="block text-xs font-semibold text-slate-700 mb-1">
-              Địa chỉ PostgreSQL
-            </label>
-            <input
-              type="text"
-              id="configDbUrlInput"
-              placeholder="postgresql://…"
-              class="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 outline-none"
-            />
-            <p class="text-[11px] text-slate-500 mt-1"> Để trống để lưu dữ liệu trên máy. </p>
-          </div>
-
-          <div
-            id="configModalStatusBox"
-            class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700"
-          >
-            Đang kiểm tra trạng thái kết nối...
-          </div>
-          <details id="configClearOptions" class="plan-options"
-            ><summary>Xóa cấu hình đã lưu</summary
-            ><label class="config-option"
-              ><input id="clearApiKeyInput" type="checkbox" /> Xóa API key</label
-            ><label class="config-option"
-              ><input id="clearDbUrlInput" type="checkbox" /> Ngừng kết nối PostgreSQL, dùng SQLite
-              trên máy</label
-            ></details
-          >
-
-          <div class="flex justify-end gap-2.5 pt-2 border-t border-slate-200">
-            <button
-              type="button"
-              onclick="closeSettingsModal()"
-              class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-50 hover:bg-slate-100 text-slate-700"
-            >
-              Đóng
+          <div class="dialog-actions">
+            <button type="button" data-action="close-settings-modal" class="ui-button quiet">
+              Hủy
             </button>
-            <button
-              type="submit"
-              id="saveConfigSubmitBtn"
-              class="px-5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-none"
-            >
-              <svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#folder"></use></svg>
-              Lưu kết nối
-            </button>
+            <button type="submit" id="saveConfigSubmitBtn" class="ui-button primary">Lưu</button>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- ==================== MODAL 2: KẾT NỐI IPHONE QUA WI-FI LAN (<svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#smartphone"></use></svg>) ==================== -->
+    <!-- ==================== MODAL 2: CÀI LÊN ĐIỆN THOẠI ==================== -->
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Kết nối iPhone"
+      aria-label="Cài ứng dụng lên điện thoại"
       data-private
       id="iphoneModal"
-      class="fixed inset-0 z-50 bg-slate-900/35 backdrop-blur-sm hidden flex items-center justify-center p-4"
+      class="modal-backdrop fixed inset-0 z-50 hidden items-center justify-center p-4"
     >
-      <div
-        class="bg-white border border-slate-200 rounded-xl max-w-md w-full shadow-none overflow-hidden text-center"
-      >
-        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-          <h3 class="text-base font-semibold text-slate-900"
-            ><svg class="icon" aria-hidden="true">
-              <use href="/icons.svg?v=13#smartphone"></use>
-            </svg>
-            Kết nối iPhone</h3
-          >
+      <div class="finance-dialog max-w-md w-full text-center">
+        <div class="dialog-header">
+          <h3>Cài lên điện thoại</h3>
           <button
-            aria-label="Đóng kết nối iPhone"
-            onclick="closeIphoneModal()"
-            class="text-slate-500 hover:text-indigo-700 text-lg"
-            ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#x"></use></svg
-          ></button>
+            type="button"
+            aria-label="Đóng"
+            data-action="close-iphone-modal"
+            class="icon-button"
+          >
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#x"></use>
+            </svg>
+          </button>
         </div>
 
-        <div class="p-6 space-y-4">
-          <p id="iphoneConnectionMessage" class="text-xs text-slate-700 leading-relaxed">
-            Mở Camera iPhone và quét mã QR để mở app trên Safari.
+        <div class="dialog-body space-y-3.5">
+          <p id="iphoneConnectionMessage" class="small muted">
+            Quét mã QR bằng Camera để mở trên điện thoại.
           </p>
 
-          <div class="bg-white p-3.5 rounded-xl inline-block shadow-none mx-auto">
+          <div class="qr-frame mx-auto">
             <img
               id="iphoneQrImg"
-              src=""
-              alt="Mã QR mở SmartSpend trên iPhone"
-              class="w-48 h-48 object-contain mx-auto"
+              alt="Mã QR mở ứng dụng"
+              class="w-44 h-44 object-contain mx-auto hidden"
             />
           </div>
 
           <div class="flex items-center justify-center gap-2">
-            <code
-              id="iphoneLanUrlCode"
-              class="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-sm"
-            >
-              http://192.168.1.x:8000
-            </code>
-            <button
-              type="button"
-              onclick="copyIphoneLanUrl()"
-              class="px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-900 border border-slate-200"
-            >
-              Copy
+            <code id="iphoneLanUrlCode" class="url-code-pill">http://127.0.0.1:8000</code>
+            <button type="button" data-action="copy-iphone-url" class="ui-button quiet small">
+              Chép link
             </button>
           </div>
 
-          <div
-            class="text-left bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-700 space-y-1.5"
-          >
-            <div
-              ><strong class="text-slate-700">Bước 1:</strong> Quét mã QR mở trang trên
-              <strong>Safari iPhone</strong>.</div
-            >
-            <div
-              ><strong class="text-slate-700">Bước 2:</strong> Bấm nút
-              <strong>Chia sẻ (Share)</strong> ở thanh dưới cùng.</div
-            >
-            <div
-              ><strong class="text-slate-700">Bước 3:</strong> Chọn
-              <strong>"Thêm vào MH chính" (Add to Home Screen)</strong> để sử dụng full-screen như
-              App iOS thực thụ!</div
-            >
+          <div class="status-info-box text-left space-y-1">
+            <div>1. Mở link bằng <strong>Safari / Chrome</strong>.</div>
+            <div>2. Chọn <strong>Chia sẻ → Thêm vào Màn hình chính</strong>.</div>
           </div>
-          <p id="iphoneConnectionNote" class="text-xs text-slate-500"></p>
-
+          <p id="iphoneConnectionNote" class="muted small"></p>
           <button
             type="button"
-            onclick="closeIphoneModal()"
-            class="w-full py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white"
+            id="nativePwaInstallBtn"
+            data-action="install-native-pwa"
+            class="ui-button primary w-full hidden"
           >
-            Đã hiểu
+            Cài đặt ngay trên thiết bị này
+          </button>
+        </div>
+
+        <div class="dialog-actions">
+          <button type="button" data-action="close-iphone-modal" class="ui-button quiet w-full">
+            Đóng
           </button>
         </div>
       </div>
     </div>
 
-    <!-- ==================== LOADING OVERLAY KHI AI ĐANG TẠO KẾ HOẠCH ==================== -->
+    <!-- ==================== LOADING OVERLAY ==================== -->
     <div
       data-private
+      data-busy="true"
+      role="status"
+      aria-live="polite"
       id="aiLoadingOverlay"
-      class="fixed inset-0 z-50 bg-slate-900/35 backdrop-blur-md hidden flex flex-col items-center justify-center p-6 text-center"
+      class="modal-backdrop fixed inset-0 z-50 hidden flex-col items-center justify-center p-6 text-center"
     >
       <div class="loading-dialog">
-        <div
-          class="w-16 h-16 border-4 border-slate-200/80 border-t-indigo-500 rounded-full animate-spin mb-4"
-        ></div>
-        <h3 class="text-lg font-semibold text-slate-900 mb-1"
-          ><svg class="icon" aria-hidden="true"><use href="/icons.svg?v=13#sparkles"></use></svg>
-          Đang tạo kế hoạch</h3
-        >
-        <p class="text-xs sm:text-sm text-slate-500 max-w-md">
-          Quá trình này có thể mất khoảng 10–20 giây.
-        </p>
+        <div class="loading-spinner mb-3"></div>
+        <h3 class="text-sm font-semibold mb-1">Đang lập kế hoạch…</h3>
+        <p class="muted small">Cân đối định lượng theo ngân sách (10–20 giây).</p>
       </div>
     </div>
 
+    <!-- ==================== MODAL CHUNG ĐA NĂNG ==================== -->
     <div
       data-private
       id="financeModal"
       role="dialog"
       aria-modal="true"
       aria-labelledby="financeModalTitle"
-      class="fixed inset-0 z-50 bg-slate-900/35 backdrop-blur-sm hidden flex items-center justify-center p-4"
+      class="modal-backdrop fixed inset-0 z-50 hidden items-center justify-center p-4"
     >
-      <div class="finance-dialog"
-        ><div class="dialog-header"
-          ><h3 id="financeModalTitle"></h3
-          ><button
+      <div class="finance-dialog">
+        <div class="dialog-header">
+          <h3 id="financeModalTitle"></h3>
+          <button
             type="button"
             class="icon-button"
-            onclick="hideModal('financeModal')"
+            data-action="close-finance-modal"
             aria-label="Đóng hộp thoại"
-            ><svg class="icon" aria-hidden="true">
-              <use href="/icons.svg?v=13#x"></use></svg></button></div
-        ><form id="financeEditorForm" onsubmit="submitFinanceEditor(event)"
-          ><div id="financeModalBody" class="dialog-body"></div
-          ><p id="financeFormError" class="form-error hidden" role="alert"></p
-          ><div id="financeModalActions" class="dialog-actions"
-            ><button type="button" class="ui-button quiet" onclick="hideModal('financeModal')"
-              >Hủy</button
-            ><button id="financeSaveButton" type="submit" class="ui-button primary"
-              >Lưu</button
-            ></div
-          ></form
-        ></div
-      >
+          >
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#x"></use>
+            </svg>
+          </button>
+        </div>
+        <form id="financeEditorForm">
+          <div id="financeModalBody" class="dialog-body"></div>
+          <p id="financeFormError" class="form-error hidden" role="alert"></p>
+          <div id="financeModalActions" class="dialog-actions">
+            <button type="button" class="ui-button quiet" data-action="close-finance-modal">
+              Hủy
+            </button>
+            <button id="financeSaveButton" type="submit" class="ui-button primary">Lưu</button>
+          </div>
+        </form>
+      </div>
     </div>
-    <!-- Toast Container -->
+
+    <!-- ==================== MODAL PHÍM TẮT ==================== -->
+    <div
+      data-private
+      id="shortcutsModal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Phím tắt"
+      class="modal-backdrop fixed inset-0 z-50 hidden items-center justify-center p-4"
+    >
+      <div class="finance-dialog max-w-md w-full">
+        <div class="dialog-header">
+          <h3>Phím tắt &amp; Cú pháp nhanh</h3>
+          <button
+            type="button"
+            class="icon-button"
+            data-action="close-shortcuts-modal"
+            aria-label="Đóng"
+          >
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#x"></use>
+            </svg>
+          </button>
+        </div>
+        <div class="dialog-body space-y-3.5">
+          <div class="shortcut-list">
+            <div class="shortcut-row">
+              <span>Bảng lệnh nhanh</span>
+              <kbd>Ctrl + K</kbd>
+            </div>
+            <div class="shortcut-row">
+              <span>Ghi thu/chi mới</span>
+              <kbd>N</kbd>
+            </div>
+            <div class="shortcut-row">
+              <span>Ô ghi nhanh</span>
+              <kbd>Q</kbd>
+            </div>
+            <div class="shortcut-row">
+              <span>Tìm giao dịch</span>
+              <kbd>/</kbd>
+            </div>
+            <div class="shortcut-row">
+              <span>Chuyển mục chính</span>
+              <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></span>
+            </div>
+            <div class="shortcut-row">
+              <span>Sáng / Tối</span>
+              <kbd>D</kbd>
+            </div>
+          </div>
+          <div class="status-info-box space-y-1">
+            <strong class="block text-strong text-xs">Ví dụ gõ nhanh</strong>
+            <p class="muted small">
+              <code>35k5 phở</code> · <code>1tr5 tiền nhà</code> · <code>+15tr lương</code> ·
+              <code>45k cà phê hôm qua</code> · <code>120k đi chợ 15/11</code>
+            </p>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button
+            type="button"
+            class="ui-button primary w-full"
+            data-action="close-shortcuts-modal"
+          >
+            Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== MODAL BẢNG LỆNH NHANH ==================== -->
+    <div
+      data-private
+      id="commandPaletteModal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Bảng lệnh nhanh"
+      class="modal-backdrop fixed inset-0 z-50 hidden items-start justify-center p-4 pt-16 sm:pt-24"
+    >
+      <div class="command-palette-dialog">
+        <div class="command-palette-search">
+          <svg class="icon muted" aria-hidden="true">
+            <use href="/icons.svg?v=21#search"></use>
+          </svg>
+          <label for="commandPaletteInput" class="sr-only">Tìm lệnh nhanh</label>
+          <input
+            id="commandPaletteInput"
+            type="text"
+            maxlength="120"
+            autocomplete="off"
+            placeholder="Tìm thao tác hoặc gõ thẳng: 35k ăn sáng…"
+          />
+          <button
+            type="button"
+            class="icon-button"
+            data-action="close-command-palette"
+            aria-label="Đóng"
+          >
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#x"></use>
+            </svg>
+          </button>
+        </div>
+        <div
+          id="commandPaletteList"
+          class="command-palette-list"
+          role="listbox"
+          aria-label="Danh sách lệnh nhanh"
+        ></div>
+        <div class="command-palette-footer">
+          <span><kbd>↑</kbd> <kbd>↓</kbd> Chọn · <kbd>Enter</kbd> Mở</span>
+          <span><kbd>Esc</kbd> Đóng</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== BOTTOM SHEET NHẬP NHANH TRÊN MOBILE ==================== -->
+    <div
+      data-private
+      id="mobileQuickModal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Ghi nhanh thu chi"
+      class="modal-backdrop fixed inset-0 z-50 hidden items-end sm:items-center justify-center p-0 sm:p-4"
+    >
+      <div class="mobile-quick-sheet">
+        <div class="sheet-handle" aria-hidden="true"></div>
+        <div class="flex items-center justify-between gap-3 mb-3">
+          <h3 class="text-sm font-semibold text-strong">Ghi thu/chi</h3>
+          <button
+            type="button"
+            class="icon-button"
+            data-action="close-mobile-quick-sheet"
+            aria-label="Đóng"
+          >
+            <svg class="icon" aria-hidden="true">
+              <use href="/icons.svg?v=21#x"></use>
+            </svg>
+          </button>
+        </div>
+        <form id="mobileQuickForm" class="space-y-3">
+          <div class="mobile-quick-input-wrap">
+            <label for="mobileQuickInput" class="sr-only">Nội dung thu chi</label>
+            <input
+              id="mobileQuickInput"
+              type="text"
+              maxlength="280"
+              autocomplete="off"
+              placeholder="35k5 phở, 1tr5 tiền nhà, +15tr lương…"
+            />
+          </div>
+          <div id="mobileQuickPreview" class="quick-add-preview hidden" aria-live="polite"></div>
+          <div class="mobile-quick-chips">
+            <button
+              type="button"
+              class="quick-hint-chip"
+              data-action="fill-mobile-chip"
+              data-sample="35k ăn sáng"
+            >
+              35k ăn sáng
+            </button>
+            <button
+              type="button"
+              class="quick-hint-chip"
+              data-action="fill-mobile-chip"
+              data-sample="45k cà phê"
+            >
+              45k cà phê
+            </button>
+            <button
+              type="button"
+              class="quick-hint-chip"
+              data-action="fill-mobile-chip"
+              data-sample="50k đổ xăng"
+            >
+              50k đổ xăng
+            </button>
+            <button
+              type="button"
+              class="quick-hint-chip"
+              data-action="fill-mobile-chip"
+              data-sample="120k đi chợ"
+            >
+              120k đi chợ
+            </button>
+            <button
+              type="button"
+              class="quick-hint-chip income"
+              data-action="fill-mobile-chip"
+              data-sample="+15tr lương"
+            >
+              +15tr lương
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-2.5 pt-1">
+            <button type="button" class="ui-button quiet" data-action="mobile-open-detail">
+              Chi tiết
+            </button>
+            <button type="submit" id="mobileQuickSubmitBtn" class="ui-button primary">Ghi</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div
       role="status"
       aria-live="polite"
@@ -1221,8 +1693,8 @@
       class="fixed bottom-5 right-5 z-50 space-y-2"
     ></div>
 
-    <script src="/auth.js?v=13"></script>
-    <script src="/app.js?v=14"></script>
-    <script src="/finance.js?v=14"></script>
+    <script src="/auth.js?v=21"></script>
+    <script src="/app.js?v=21"></script>
+    <script src="/finance.js?v=21"></script>
   </body>
 </html>

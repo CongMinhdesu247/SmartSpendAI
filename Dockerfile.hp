@@ -9,5 +9,5 @@ COPY --chown=smartspend:smartspend frontend ./frontend
 COPY --chown=smartspend:smartspend scripts/homeserver ./scripts/homeserver
 USER smartspend
 EXPOSE 8000
-# No forwarded client headers are trusted: the published port is loopback-only.
-CMD ["uvicorn", "backend.api_server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-proxy-headers"]
+# Published port on host is strictly bound to 127.0.0.1. Enable proxy headers only when SMARTSPEND_TRUST_PROXY=1.
+CMD ["sh", "-c", "if [ \"${SMARTSPEND_TRUST_PROXY:-1}\" = \"1\" ] || [ \"${SMARTSPEND_TRUST_PROXY:-}\" = \"true\" ]; then exec uvicorn backend.api_server:app --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=\"${FORWARDED_ALLOW_IPS:-127.0.0.1,172.16.0.0/12,192.168.0.0/16,10.0.0.0/8}\"; else exec uvicorn backend.api_server:app --host 0.0.0.0 --port 8000 --workers 1 --no-proxy-headers; fi"]

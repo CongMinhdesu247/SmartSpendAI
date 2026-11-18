@@ -1,0 +1,11 @@
+# Cấu hình Route cho Cloudflare Tunnel (_proxy/cloudflared/config.yml hoặc Zero Trust Dashboard)
+# Đảm bảo SMARTSPEND_PUBLIC_URL=https://smartspend.tenmiencuaban.com và SMARTSPEND_TRUST_PROXY=1 trong .env
+
+ingress:
+  - hostname: smartspend.tenmiencuaban.com
+    service: http://127.0.0.1:8092
+    originRequest:
+      connectTimeout: 15s
+      keepAliveTimeout: 120s
+      noTLSVerify: true
+  - service: http_status:404

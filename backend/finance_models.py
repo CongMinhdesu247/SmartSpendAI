@@ -17,6 +17,7 @@ from sqlalchemy import (
     UniqueConstraint,
     event,
 )
+from backend.auth_models import AccessSession, Account  # noqa: F401
 from backend.database import Base
 from backend.tenancy import LedgerOwned, OWNER_ID
 from backend.models import utc_now
@@ -131,24 +132,6 @@ class PlanArchive(LedgerOwned, Base):
     )
 
 
-class Account(Base):
-    __tablename__ = "spend_accounts"
-    id = Column(String(36), primary_key=True)
-    username = Column(String(32), nullable=False, unique=True)
-    password_hash = Column(Text, nullable=False)
-    active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
-
-
-class AccessSession(Base):
-    __tablename__ = "spend_access_sessions"
-    id = Column(String(64), primary_key=True)  # SHA-256 of a random session ID
-    user_id = Column(String(36), nullable=False, default=OWNER_ID, index=True)
-    password_version = Column(String(64), nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
-
-
 @event.listens_for(Transaction, "before_insert")
 @event.listens_for(Transaction, "before_update")
 def update_search_title(_mapper, _connection, transaction):
@@ -166,8 +149,6 @@ for model in (
     Contribution,
     Preference,
     PlanArchive,
-    AccessSession,
-    Account,
 ):
     event.listen(
         model.__table__,

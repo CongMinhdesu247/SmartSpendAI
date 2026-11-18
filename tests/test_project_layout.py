@@ -92,6 +92,30 @@ class ProjectLayoutTests(unittest.TestCase):
                 self.assertIn("frontend/index.html", bundle.namelist())
                 self.assertNotIn(".env.cloud", bundle.namelist())
 
+    def test_local_server_architecture_files_follow_server_context_rules(self):
+        root = Path(__file__).resolve().parents[1]
+        compose_local = (root / "deploy/local-server/docker-compose.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("./data/postgres:/var/lib/postgresql", compose_local)
+        self.assertIn("127.0.0.1:${SMARTSPEND_HTTP_PORT:-8092}:8000", compose_local)
+        self.assertNotIn("0.0.0.0:", compose_local)
+        self.assertIn("restart: unless-stopped", compose_local)
+        self.assertIn("read_only: true", compose_local)
+        self.assertIn("internal: true", compose_local)
+
+        for rel in (
+            "SERVER_CONTEXT.md",
+            "deploy/local-server/sites/smartspend.nginx.conf",
+            "deploy/local-server/sites/smartspend.Caddyfile",
+            "deploy/local-server/sites/smartspend.cloudflared.yml",
+            "scripts/homeserver/update.sh",
+            "scripts/homeserver/deploy_update.ps1",
+            "docs/reports/project-audit-and-improvements.md",
+        ):
+            self.assertTrue((root / rel).is_file(), f"Missing {rel}")
+
+
 
 if __name__ == "__main__":
     unittest.main()

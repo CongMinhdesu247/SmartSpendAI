@@ -1,10 +1,14 @@
 """Prepare a secret-free source ZIP and private environment files for hosting."""
 
-import json
+import argparse
+import getpass
+import os
+from pathlib import Path
 import secrets
 import zipfile
-from pathlib import Path
+
 from sqlalchemy.engine import make_url
+
 from backend.access import password_hasher
 from backend.database import load_config, normalize_database_url
 
@@ -23,7 +27,7 @@ def read_env(path=ENV_FILE):
     )
 
 
-def prepare():
+def prepare(interactive_password: bool = False):
     OUTPUT.mkdir(parents=True, exist_ok=True)
     cfg = load_config()
     db_url = make_url(normalize_database_url(cfg.get("database_url", "")))
@@ -33,14 +37,14 @@ def prepare():
         db_url = db_url.update_query_dict({"sslmode": "require"})
     values = read_env()
     if not values.get("SMARTSPEND_PASSWORD_HASH"):
-        password = secrets.token_urlsafe(18)
+        if interactive_password:
+            password = getpass.getpass("Nhap mat khau chuso (toi thieu 12 ky tu): ").strip()
+            if len(password) < 12 or password != getpass.getpass("Nhap lai mat khau: ").strip():
+                raise ValueError("Mật khẩu xác nhận chưa khớp hoặc ngắn hơn 12 ký tự")
+        else:
+            password = secrets.token_urlsafe(18)
+            print("Mat khau chuso moi (chi hien 1 lan, khong luu file plaintext):", password)
         values["SMARTSPEND_PASSWORD_HASH"] = password_hasher.hash(password)
-        (OUTPUT / "login-private.txt").write_text(
-            "MAT KHAU DANG NHAP SMARTSPEND\n\n"
-            + password
-            + "\n\nGiu file nay rieng tu. Khong tai len GitHub hoac gui trong chat.\n",
-            encoding="utf-8",
-        )
     values.update(
         {
             "SMARTSPEND_CLOUD": "1",
@@ -48,10 +52,15 @@ def prepare():
             "GEMINI_API_KEY": cfg.get("gemini_api_key", ""),
         }
     )
+    values.setdefault("SMARTSPEND_ALLOW_REGISTRATION", "0")
     values.setdefault("SMARTSPEND_SESSION_SECRET", secrets.token_urlsafe(48))
     ENV_FILE.write_text(
         "\n".join(f"{key}={value}" for key, value in values.items()) + "\n", encoding="utf-8"
     )
+    try:
+        os.chmod(ENV_FILE, 0o600)
+    except OSError:
+        pass
     files = [
         ROOT / name
         for name in ("Dockerfile", ".dockerignore", "requirements/server.txt", "render.yaml")
@@ -77,12 +86,14 @@ def prepare():
                 raise ValueError("Source ZIP chứa cấu hình riêng tư; dừng đóng gói")
     print("Da chuan bi source ZIP: output/deployment/SmartSpend-cloud-source.zip")
     print("Bien moi truong rieng tu: .env.cloud (khong commit/tai len kho ma nguon)")
-    print("Mat khau iPhone: output/deployment/login-private.txt (chi xem tren may cua ban)")
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--prompt-password", action="store_true")
+    cli_args = parser.parse_args()
     try:
-        prepare()
+        prepare(interactive_password=cli_args.prompt_password)
     except Exception as error:
         print("Chua chuan bi duoc cloud:", type(error).__name__)
         raise SystemExit(1)
